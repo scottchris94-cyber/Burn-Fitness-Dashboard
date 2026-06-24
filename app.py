@@ -2,12 +2,13 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from datetime import datetime
 
 # 1. Page Configuration
 st.set_page_config(page_title="Burn Fitness Dashboard", layout="wide", initial_sidebar_state="expanded")
 
 # 2. Load Live Data & Generate Projections
-# MAKE SURE your actual published CSV link is between the quotes below!
+# MAKE SURE your actual published CSV link is between the quotes below
 sheet_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRHzA-fwBnL6URgQpHeM6ezWfk46qhlKwVgtBXm9vqJkRjOS9rXhngAE1VCbjyxhQ/pub?gid=237304684&single=true&output=csv"
 
 @st.cache_data(ttl=600)
@@ -52,7 +53,7 @@ for m in all_months:
         "Month": m,
         "Total Income": target_revenue,
         "Operating Expenses": 97450,
-        "Non-Operating Expenses": 8095, # Base fixed debt for projections
+        "Non-Operating Expenses": 8095, 
         "Remaining Cash": 0,
         "PT Revenue": pt_revenue,
         "Membership Dues": mem_dues,
@@ -84,10 +85,16 @@ st.sidebar.title("Dashboard Controls")
 st.sidebar.markdown("Filter data by month for the owner review. Future months display projected targets.")
 selected_month = st.sidebar.selectbox("Select Month", ["All Year to Date"] + df["Month"].tolist())
 
+# Identify the current real-world month to exclude from YTD KPI calculations
+current_month_abbr = datetime.now().strftime("%b")
+
 if selected_month != "All Year to Date":
     view_df = df[df["Month"] == selected_month]
+    kpi_df = view_df  # If they select a specific month, show that month's KPIs
 else:
     view_df = df
+    # Exclude the current incomplete month and future projections from YTD KPIs
+    kpi_df = df[(df["Status"] == "Actual") & (df["Month"] != current_month_abbr)]
 
 # 4. Main Header
 st.title("Burn Fitness 2, LLC")
@@ -96,13 +103,13 @@ st.markdown("---")
 
 # 5. Top KPI Row
 col1, col2, col3, col4 = st.columns(4)
-current_revenue = view_df["Total Income"].sum()
-current_op_income = view_df["Operating Income"].sum()
-current_cash = view_df["Remaining Cash"].sum()
-avg_margin = view_df["Profit Margin (%)"].mean()
+current_revenue = kpi_df["Total Income"].sum()
+current_op_income = kpi_df["Operating Income"].sum()
+current_cash = kpi_df["Remaining Cash"].sum()
+avg_margin = kpi_df["Profit Margin (%)"].mean()
 
 with col1:
-    st.metric("Total Income", f"${current_revenue:,.2f}")
+    st.metric("Total Income (YTD Completed)", f"${current_revenue:,.2f}")
 with col2:
     st.metric("Operating Income", f"${current_op_income:,.2f}")
 with col3:
@@ -112,7 +119,7 @@ with col4:
 
 st.markdown("---")
 
-# 6. Detailed Charts Row (Full Width Cash Flow)
+# 6. Detailed Charts Row
 st.markdown("#### Operating Cash Flow (Revenue vs Expenses)")
 fig_cash = go.Figure()
 
@@ -128,7 +135,7 @@ st.caption("Darker bars indicate Actuals from Google Sheets. Lighter bars indica
 
 st.markdown("---")
 
-# 7. Actionable Owner Metrics Row (Full Width Profit Drain)
+# 7. Actionable Owner Metrics Row
 st.markdown("### Critical Decision Metrics")
 st.markdown("**The Profit Drain (Operating vs Non-Operating)**")
 fig_drain = go.Figure()
@@ -141,10 +148,9 @@ st.caption("Compares floor profitability to the cash leaving for owner draws and
 # 8. Owner Distribution & Decision Guide
 st.markdown("---")
 st.markdown("### Owner Distribution & Decision Guide")
-st.markdown("This section calculates the exact draw structure and cash reserve status based on the selected month's revenue.")
+st.markdown("This section calculates the exact draw structure and cash reserve status based on the selected month's revenue and live operating expenses.")
 
-def calculate_waterfall(revenue):
-    op_ex = 97450
+def calculate_waterfall(revenue, op_ex):
     debt = 8095
     base_dufresne = 7500
     base_tushman = 5000
@@ -176,7 +182,9 @@ def calculate_waterfall(revenue):
     surplus_deficit = cash_after_reserve
     
     if surplus_deficit < 0:
-        if revenue >= 116000:
+        # Using dynamic OpEx changes the breakeven math, so we calculate the threshold rather than hardcode 116000
+        breakeven_point = op_ex + debt + base_dufresne + base_tushman
+        if revenue >= (breakeven_point - 2000):
             status = "Alert: Almost breakeven. Deficit narrowing."
         else:
             status = "Alert: Both mins paid. Cash reserve absorbs loss."
@@ -193,6 +201,7 @@ def calculate_waterfall(revenue):
         
     return {
         "Revenue": revenue,
+        "OpEx": op_ex,
         "DuFresne": dufresne_actual,
         "Tushman": tushman_actual,
         "Reserve": reserve_actual,
@@ -203,11 +212,12 @@ def calculate_waterfall(revenue):
 # Apply to Current Month View
 current_month_name = view_df["Month"].iloc[-1]
 current_live_revenue = view_df["Total Income"].iloc[-1]
+current_live_opex = view_df["Operating Expenses"].iloc[-1]
 is_projected = view_df["Status"].iloc[-1]
 
-waterfall_result = calculate_waterfall(current_live_revenue)
+waterfall_result = calculate_waterfall(current_live_revenue, current_live_opex)
 
-st.markdown(f"**Based on {current_month_name} Revenue ({is_projected}):** `${current_live_revenue:,.2f}`")
+st.markdown(f"**Based on {current_month_name} Revenue ({is_projected}):** `${current_live_revenue:,.2f}` | **Operating Expenses:** `${current_live_opex:,.2f}`")
 
 wf_col1, wf_col2, wf_col3 = st.columns(3)
 
@@ -227,9 +237,9 @@ else:
 
 # 9. What-If Simulator
 st.markdown("#### What-If Simulator")
-st.caption("Adjust the slider to see how future revenue changes the distribution.")
+st.caption(f"Adjust the slider to see how future revenue changes the distribution against your current OpEx (${current_live_opex:,.0f}).")
 sim_revenue = st.slider("Simulate Total Revenue:", min_value=100000, max_value=140000, value=int(current_live_revenue), step=1000)
-sim_result = calculate_waterfall(sim_revenue)
+sim_result = calculate_waterfall(sim_revenue, current_live_opex)
 
 st.write(f"If revenue hits **${sim_revenue:,.0f}**, the result is:")
 st.markdown(f"> {sim_result['Decision']} | DuFresne: **${sim_result['DuFresne']:,.0f}** | Tushman: **${sim_result['Tushman']:,.0f}** | Reserve: **${sim_result['Reserve']:,.0f}**")
