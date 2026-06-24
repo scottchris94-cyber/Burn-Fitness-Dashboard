@@ -17,7 +17,7 @@ st.markdown("""
 
 # 2. Load Live Data & Generate Projections
 # MAKE SURE your actual published CSV link is between the quotes below
-sheet_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRHzA-fwBnL6URgQpHeM6ezWfk46qhlKwVgtBXm9vqJkRjOS9rXhngAE1VCbjyxhQ/pub?gid=237304684&single=true&output=csv"
+sheet_url = "PASTE_YOUR_COPIED_LINK_HERE"
 
 @st.cache_data(ttl=600)
 def load_data(url):
@@ -36,13 +36,29 @@ def load_data(url):
             df[col] = pd.to_numeric(df[col], errors='coerce')
             
     df = df.fillna(0)
+    
+    # Calculate derived financial columns natively for all rows (including YTD/AVG)
+    if "Total Income" in df.columns and "Operating Expenses" in df.columns:
+        df["Operating Income"] = df["Total Income"] - df["Operating Expenses"]
+        df["Profit Margin (%)"] = (df["Operating Income"] / df["Total Income"]) * 100
+        df["Profit Margin (%)"] = df["Profit Margin (%)"].fillna(0)
+        
     return df
 
 try:
-    df_live = load_data(sheet_url)
+    df_live_full = load_data(sheet_url)
+    
+    # Extract the user-defined YTD and AVG rows directly from Google Sheets
+    ytd_row = df_live_full[df_live_full["Month"] == "YTD"].copy()
+    avg_row = df_live_full[df_live_full["Month"] == "AVG"].copy()
+    
+    # Isolate strictly the actual chronological months for the main dataframe
+    df_live = df_live_full[~df_live_full["Month"].isin(["YTD", "AVG"])].copy()
     df_live["Status"] = "Actual"
 except:
     df_live = pd.DataFrame()
+    ytd_row = pd.DataFrame()
+    avg_row = pd.DataFrame()
 
 # Generate the 12-Month Projected Budget Engine
 all_months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -83,8 +99,10 @@ else:
 df["Month_Num"] = pd.Categorical(df["Month"], categories=all_months, ordered=True)
 df = df.sort_values("Month_Num").drop(columns=["Month_Num"])
 
-df["Operating Income"] = df["Total Income"] - df["Operating Expenses"]
-df["Profit Margin (%)"] = (df["Operating Income"] / df["Total Income"]) * 100
+# Ensure columns exist for the merged dataframe
+if "Operating Income" not in df.columns:
+    df["Operating Income"] = df["Total Income"] - df["Operating Expenses"]
+    df["Profit Margin (%)"] = (df["Operating Income"] / df["Total Income"]) * 100
 
 # 3. Sidebar Configuration
 st.sidebar.title("Dashboard Controls")
@@ -95,12 +113,13 @@ ytd_label = "Completed Year-to-Date (Excludes Active Month)"
 
 selected_month = st.sidebar.selectbox("Select Month", [ytd_label] + df["Month"].tolist())
 
-# Establish a strictly "Completed" dataframe to calculate accurate historical averages and YTD totals
+# Establish a strictly "Completed" dataframe for the distribution guide
 completed_df = df[(df["Status"] == "Actual") & (df["Month"] != current_month_abbr)]
 
 if selected_month == ytd_label:
-    view_df = completed_df 
+    # We bypass view_df entirely for metrics and use the YTD row you built in Sheets
     is_ytd = True
+    view_df = completed_df 
 else:
     view_df = df[df["Month"] == selected_month]
     is_ytd = False
@@ -113,23 +132,31 @@ st.markdown("### Executive Financial Overview")
 with st.container(border=True):
     col1, col2, col3, col4 = st.columns(4)
     
-    current_revenue = view_df["Total Income"].sum()
-    current_op_income = view_df["Operating Income"].sum()
-    current_cash = view_df["Remaining Cash"].sum()
-    
     if is_ytd:
-        # Calculate true YTD margin from the aggregate totals
-        avg_margin = f"{(current_op_income / current_revenue * 100):.1f}%" if current_revenue > 0 else "0.0%"
+        # Pull directly from your YTD row in Google Sheets
+        current_revenue = ytd_row["Total Income"].values[0] if not ytd_row.empty else 0
+        current_op_income = ytd_row["Operating Income"].values[0] if not ytd_row.empty else 0
+        current_cash = ytd_row["Remaining Cash"].values[0] if not ytd_row.empty else 0
+        avg_margin = f"{ytd_row['Profit Margin (%)'].values[0]:.1f}%" if not ytd_row.empty else "0.0%"
+        
         margin_label = "Operating Margin (Completed YTD)"
         op_label = "Operating Income"
     elif selected_month == current_month_abbr:
-        # Mask margin for the active month to prevent false loss alarms
+        # Live active month
+        current_revenue = view_df["Total Income"].sum()
+        current_op_income = view_df["Operating Income"].sum()
+        current_cash = view_df["Remaining Cash"].sum()
         avg_margin = "N/A (Active Month)"
+        
         margin_label = "Operating Profit Margin"
         op_label = "Operating Income (Incomplete)"
     else:
         # Standard completed month
+        current_revenue = view_df["Total Income"].sum()
+        current_op_income = view_df["Operating Income"].sum()
+        current_cash = view_df["Remaining Cash"].sum()
         avg_margin = f"{view_df['Profit Margin (%)'].mean():.1f}%"
+        
         margin_label = "Operating Profit Margin"
         op_label = "Operating Income"
 
@@ -149,31 +176,30 @@ st.write("")
 # 6. Performance Snapshot
 if is_ytd:
     st.markdown("### Completed YTD Performance Snapshot")
-    st.markdown("Year-to-Date operational totals. *(Total Memberships displays the count from the most recently completed month).*")
+    st.markdown("Year-to-Date operational totals pulled directly from your Google Sheets feed.")
 else:
     st.markdown("### Month-to-Date (MTD) Performance Snapshot")
-    st.markdown("Real-time operational metrics for the selected period compared to your historical average.")
+    st.markdown("Real-time operational metrics compared to your custom historical average.")
 
 with st.container(border=True):
     mtd_col1, mtd_col2, mtd_col3, mtd_col4, mtd_col5 = st.columns(5)
     
     if is_ytd:
-        # YTD Logic: Sum the performance data (except memberships which is a point-in-time count)
-        mtd_members = completed_df["Total Memberships"].iloc[-1] if not completed_df.empty else 0
-        mtd_cancels = completed_df["Total Cancels"].sum()
-        mtd_eft_gain = completed_df["Total EFT Gained"].sum()
-        mtd_eft_lost = completed_df["Total EFT Lost"].sum()
-        mtd_pt_rev = completed_df["MTD PT Revenue"].sum()
+        # Pull directly from your YTD row in Google Sheets
+        mtd_members = ytd_row["Total Memberships"].values[0] if not ytd_row.empty else 0
+        mtd_cancels = ytd_row["Total Cancels"].values[0] if not ytd_row.empty else 0
+        mtd_eft_gain = ytd_row["Total EFT Gained"].values[0] if not ytd_row.empty else 0
+        mtd_eft_lost = ytd_row["Total EFT Lost"].values[0] if not ytd_row.empty else 0
+        mtd_pt_rev = ytd_row["MTD PT Revenue"].values[0] if not ytd_row.empty else 0
         
-        # Disable deltas for YTD view as it doesn't compare directly to a 1-month average
         str_d_members, str_d_cancels, str_d_eft_gain, str_d_eft_lost = None, None, None, None
         
     else:
-        # Single Month Logic: Compare current selected month to the historical average
-        avg_members = completed_df["Total Memberships"].mean() if not completed_df.empty else 0
-        avg_cancels = completed_df["Total Cancels"].mean() if not completed_df.empty else 0
-        avg_eft_gain = completed_df["Total EFT Gained"].mean() if not completed_df.empty else 0
-        avg_eft_lost = completed_df["Total EFT Lost"].mean() if not completed_df.empty else 0
+        # Compare current selected month to your custom AVG row in Google Sheets
+        avg_members = avg_row["Total Memberships"].values[0] if not avg_row.empty else 0
+        avg_cancels = avg_row["Total Cancels"].values[0] if not avg_row.empty else 0
+        avg_eft_gain = avg_row["Total EFT Gained"].values[0] if not avg_row.empty else 0
+        avg_eft_lost = avg_row["Total EFT Lost"].values[0] if not avg_row.empty else 0
 
         mtd_members = view_df["Total Memberships"].iloc[-1] if "Total Memberships" in view_df.columns else 0
         mtd_cancels = view_df["Total Cancels"].iloc[-1] if "Total Cancels" in view_df.columns else 0
