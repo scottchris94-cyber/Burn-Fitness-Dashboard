@@ -7,13 +7,32 @@ import plotly.graph_objects as go
 st.set_page_config(page_title="Burn Fitness Dashboard", layout="wide", initial_sidebar_state="expanded")
 
 # 2. Load Data from Google Sheets
-# Paste your CSV link inside the quotation marks below
+# MAKE SURE your actual published CSV link is between the quotes below!
 sheet_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRHzA-fwBnL6URgQpHeM6ezWfk46qhlKwVgtBXm9vqJkRjOS9rXhngAE1VCbjyxhQ/pub?gid=237304684&single=true&output=csv"
 
-# This command pulls the live data and refreshes it every 10 minutes
 @st.cache_data(ttl=600)
 def load_data(url):
-    return pd.read_csv(url)
+    df = pd.read_csv(url)
+    
+    # Drop any blank rows that Google Sheets accidentally exported
+    df = df.dropna(how='all')
+    
+    # List of financial columns that need to be cleaned
+    numeric_cols = [
+        "Total Income", "Operating Expenses", "Non-Operating Expenses", 
+        "Remaining Cash", "PT Revenue", "Membership Dues", "Total Payroll"
+    ]
+    
+    # Strip out dollar signs and commas, then convert to numbers
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.replace('$', '', regex=False).str.replace(',', '', regex=False)
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+            
+    # Fill any empty cells with 0 so math doesn't break
+    df = df.fillna(0)
+            
+    return df
 
 df = load_data(sheet_url)
 
