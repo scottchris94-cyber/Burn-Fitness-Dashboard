@@ -3,7 +3,6 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
-import os
 
 # 1. Page Configuration
 st.set_page_config(page_title="Burn Fitness Financials", layout="wide", initial_sidebar_state="expanded")
@@ -18,12 +17,17 @@ st.markdown("""
 
 # 2. Load Live Data & Generate Projections
 # MAKE SURE your actual published CSV link is between the quotes below
-sheet_url = "PASTE_YOUR_COPIED_LINK_HERE"
+sheet_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRHzA-fwBnL6URgQpHeM6ezWfk46qhlKwVgtBXm9vqJkRjOS9rXhngAE1VCbjyxhQ/pub?gid=237304684&single=true&output=csv"
 
-@st.cache_data(ttl=600)
-def load_data(url):
+# Renamed function to bust the cache and lowered TTL to 60 seconds
+@st.cache_data(ttl=60)
+def fetch_live_data(url):
     df = pd.read_csv(url)
     df = df.dropna(how='all')
+    
+    # Strip accidental spaces from the Month column to ensure exact matches
+    if "Month" in df.columns:
+        df["Month"] = df["Month"].astype(str).str.strip()
     
     numeric_cols = [
         "Total Income", "Operating Expenses", "Non-Operating Expenses", 
@@ -46,12 +50,16 @@ def load_data(url):
     return df
 
 try:
-    df_live_full = load_data(sheet_url)
+    df_live_full = fetch_live_data(sheet_url)
     
-    ytd_row = df_live_full[df_live_full["Month"] == "YTD"].copy()
-    avg_row = df_live_full[df_live_full["Month"] == "AVG"].copy()
+    # Extract YTD and AVG using uppercase to ensure a perfect match
+    ytd_row = df_live_full[df_live_full["Month"].str.upper() == "YTD"].copy()
+    avg_row = df_live_full[df_live_full["Month"].str.upper() == "AVG"].copy()
     
-    df_live = df_live_full[~df_live_full["Month"].isin(["YTD", "AVG"])].copy()
+    df_live = df_live_full[~df_live_full["Month"].str.upper().isin(["YTD", "AVG"])].copy()
+    
+    # CRITICAL FIX: Filter out placeholder months from the Google Sheet that have 0 income and 0 expenses
+    df_live = df_live[(df_live["Total Income"] != 0) | (df_live["Operating Expenses"] != 0)]
     df_live["Status"] = "Actual"
 except:
     df_live = pd.DataFrame()
