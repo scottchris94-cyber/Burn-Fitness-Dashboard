@@ -145,3 +145,108 @@ with st.container(border=True):
         cash_after_reserve -= d_extra
         
     if cash_after_reserve > 0:
+        t_extra = min(cash_after_reserve, 5000)
+        s_tushman += t_extra
+        cash_after_reserve -= t_extra
+
+    st.markdown(f"**Scenario Basis: {current_month_name} ({is_projected})** | Revenue: `${current_live_revenue:,.2f}` | OpEx: `${current_live_opex:,.2f}`")
+    
+    wf_col1, wf_col2, wf_col3 = st.columns(3)
+
+    with wf_col1:
+        # Hardcoded minimum value to ensure DuFresne never drops below 7500
+        safe_dufresne_start = max(float(s_dufresne), 7500.0)
+        test_dufresne = st.number_input("DuFresne Draw (Min $7,500)", value=safe_dufresne_start, min_value=7500.0, step=500.0)
+    with wf_col2:
+        test_tushman = st.number_input("Tushman Draw", value=float(s_tushman), step=500.0)
+    with wf_col3:
+        test_reserve = st.number_input("Cash Reserve Added", value=float(s_reserve), step=500.0)
+
+    final_balance = current_live_revenue - current_live_opex - fixed_debt - test_dufresne - test_tushman - test_reserve
+
+    if final_balance < 0:
+        st.error(f"WARNING: This scenario results in a cash deficit of ${abs(final_balance):,.2f}.")
+    elif final_balance > 0:
+        st.success(f"APPROVED: This scenario results in a retained surplus of ${final_balance:,.2f}.")
+    else:
+        st.info(f"BREAKEVEN: All cash accurately allocated. Remaining balance is $0.00.")
+
+st.write("") # Spacing
+
+# 7. Modern Financial Charts
+st.markdown("### Financial Visualizations")
+
+chart_col1, chart_col2 = st.columns(2)
+
+with chart_col1:
+    st.markdown("**Annual Revenue vs. Expenses Trend**")
+    fig_trend = go.Figure()
+    
+    # Modern styling: Clean bars for OpEx, sleek line for Revenue
+    fig_trend.add_trace(go.Bar(
+        x=df["Month"], y=df["Operating Expenses"], 
+        name="Operating Expenses", 
+        marker_color="#cbd5e1", # Sleek slate gray
+        opacity=0.8
+    ))
+    fig_trend.add_trace(go.Scatter(
+        x=df["Month"], y=df["Total Income"], 
+        name="Total Revenue", 
+        mode='lines+markers',
+        line=dict(color="#0f172a", width=3), # Deep corporate navy
+        marker=dict(size=8)
+    ))
+    
+    fig_trend.update_layout(
+        template="plotly_white",
+        margin=dict(t=10, b=10, l=0, r=0),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        xaxis=dict(showgrid=False),
+        yaxis=dict(showgrid=True, gridcolor="#f1f5f9")
+    )
+    st.plotly_chart(fig_trend, use_container_width=True)
+
+with chart_col2:
+    st.markdown(f"**Monthly Cash Flow Waterfall ({current_month_name})**")
+    
+    # Highly professional waterfall chart to visualize the selected month's exact cash flow
+    fig_waterfall = go.Figure(go.Waterfall(
+        name="20", orientation="v",
+        measure=["relative", "relative", "relative", "relative", "relative", "relative", "total"],
+        x=["Revenue", "OpEx", "Debt", "DuFresne", "Tushman", "Reserve", "Final Balance"],
+        y=[
+            current_live_revenue, 
+            -current_live_opex, 
+            -fixed_debt, 
+            -test_dufresne, 
+            -test_tushman, 
+            -test_reserve, 
+            final_balance
+        ],
+        connector={"line":{"color":"#cbd5e1"}},
+        decreasing={"marker":{"color":"#ef4444"}}, # Professional red
+        increasing={"marker":{"color":"#10b981"}}, # Professional green
+        totals={"marker":{"color":"#3b82f6"}}      # Professional blue
+    ))
+    
+    fig_waterfall.update_layout(
+        template="plotly_white",
+        margin=dict(t=10, b=10, l=0, r=0),
+        showlegend=False,
+        xaxis=dict(showgrid=False),
+        yaxis=dict(showgrid=True, gridcolor="#f1f5f9")
+    )
+    st.plotly_chart(fig_waterfall, use_container_width=True)
+
+st.write("")
+
+# 8. Raw Data Table Toggle
+with st.expander("View Raw Financial Data"):
+    st.dataframe(df.style.format({
+        "Total Income": "${:,.2f}",
+        "Operating Expenses": "${:,.2f}",
+        "Non-Operating Expenses": "${:,.2f}",
+        "PT Revenue": "${:,.2f}",
+        "Membership Dues": "${:,.2f}",
+        "Remaining Cash": "${:,.2f}"
+    }), use_container_width=True)
