@@ -6,20 +6,16 @@ import plotly.graph_objects as go
 # 1. Page Configuration
 st.set_page_config(page_title="Burn Fitness Dashboard", layout="wide", initial_sidebar_state="expanded")
 
-# 2. Load Data (Pre-loaded with Jan-Jun 2026 Data)
-# To connect to your live sheet later, you would replace this block with:
-# df = pd.read_excel('burn_fitness_data.xlsx')
-data = {
-    "Month": ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
-    "Total Income": [110871.94, 112839.05, 122855.63, 107871.29, 110694.36, 115760.00],
-    "Operating Expenses": [94581.30, 90146.02, 97590.52, 99132.24, 93203.16, 90920.67],
-    "Non-Operating Expenses": [21944.74, 24881.77, 26988.25, 16265.47, 15090.44, 12193.53],
-    "Remaining Cash": [-5654.10, -2188.74, -1723.14, -7526.42, 2400.76, 12645.80],
-    "PT Revenue": [48710.46, 65556.46, 63330.42, 58805.00, 62700.00, 60000.00],
-    "Membership Dues": [45278.72, 45321.84, 55726.22, 46193.01, 45449.61, 55000.00],
-    "Total Payroll": [44502.02, 47093.69, 46759.14, 57595.85, 51282.91, 53052.51]
-}
-df = pd.DataFrame(data)
+# 2. Load Data from Google Sheets
+# Paste your CSV link inside the quotation marks below
+sheet_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRHzA-fwBnL6URgQpHeM6ezWfk46qhlKwVgtBXm9vqJkRjOS9rXhngAE1VCbjyxhQ/pub?gid=237304684&single=true&output=csv"
+
+# This command pulls the live data and refreshes it every 10 minutes
+@st.cache_data(ttl=600)
+def load_data(url):
+    return pd.read_csv(url)
+
+df = load_data(sheet_url)
 
 # Calculate dynamic columns
 df["Operating Income"] = df["Total Income"] - df["Operating Expenses"]
