@@ -89,17 +89,21 @@ df["Profit Margin (%)"] = (df["Operating Income"] / df["Total Income"]) * 100
 # 3. Sidebar Configuration
 st.sidebar.title("Dashboard Controls")
 st.sidebar.markdown("Filter data by month for the owner review. Future months display projected targets.")
-selected_month = st.sidebar.selectbox("Select Month", ["All Year to Date"] + df["Month"].tolist())
 
 current_month_abbr = datetime.now().strftime("%b")
+ytd_label = "Completed Year-to-Date (Excludes Active Month)"
 
-# Establish a strictly "Completed" dataframe to calculate accurate historical averages
+selected_month = st.sidebar.selectbox("Select Month", [ytd_label] + df["Month"].tolist())
+
+# Establish a strictly "Completed" dataframe to calculate accurate historical averages and YTD totals
 completed_df = df[(df["Status"] == "Actual") & (df["Month"] != current_month_abbr)]
 
-if selected_month != "All Year to Date":
-    view_df = df[df["Month"] == selected_month] 
+if selected_month == ytd_label:
+    view_df = completed_df 
+    is_ytd = True
 else:
-    view_df = df
+    view_df = df[df["Month"] == selected_month]
+    is_ytd = False
 
 # 4. Main Header
 st.title("Burn Fitness 2, LLC")
@@ -109,34 +113,25 @@ st.markdown("### Executive Financial Overview")
 with st.container(border=True):
     col1, col2, col3, col4 = st.columns(4)
     
-    if selected_month == "All Year to Date":
-        # YTD includes all actuals for revenue and cash flow
-        current_revenue = df[df["Status"] == "Actual"]["Total Income"].sum()
-        current_op_income = df[df["Status"] == "Actual"]["Operating Income"].sum()
-        current_cash = df[df["Status"] == "Actual"]["Remaining Cash"].sum()
-        
-        # Margin is strictly calculated against completed months to avoid MTD skew
-        comp_rev = completed_df["Total Income"].sum()
-        comp_op = completed_df["Operating Income"].sum()
-        avg_margin = f"{(comp_op / comp_rev * 100):.1f}%" if comp_rev > 0 else "0.0%"
-        
-        margin_label = "Operating Profit Margin (Completed YTD)"
-        op_label = "Operating Income (MTD)"
-        
+    current_revenue = view_df["Total Income"].sum()
+    current_op_income = view_df["Operating Income"].sum()
+    current_cash = view_df["Remaining Cash"].sum()
+    
+    if is_ytd:
+        # Calculate true YTD margin from the aggregate totals
+        avg_margin = f"{(current_op_income / current_revenue * 100):.1f}%" if current_revenue > 0 else "0.0%"
+        margin_label = "Operating Margin (Completed YTD)"
+        op_label = "Operating Income"
+    elif selected_month == current_month_abbr:
+        # Mask margin for the active month to prevent false loss alarms
+        avg_margin = "N/A (Active Month)"
+        margin_label = "Operating Profit Margin"
+        op_label = "Operating Income (Incomplete)"
     else:
-        current_revenue = view_df["Total Income"].sum()
-        current_op_income = view_df["Operating Income"].sum()
-        current_cash = view_df["Remaining Cash"].sum()
-        
-        # If viewing the active month, mask the margin to prevent false loss alarms
-        if selected_month == current_month_abbr:
-            avg_margin = "N/A (Active Month)"
-            margin_label = "Operating Profit Margin"
-            op_label = "Operating Income (Incomplete)"
-        else:
-            avg_margin = f"{view_df['Profit Margin (%)'].mean():.1f}%"
-            margin_label = "Operating Profit Margin"
-            op_label = "Operating Income"
+        # Standard completed month
+        avg_margin = f"{view_df['Profit Margin (%)'].mean():.1f}%"
+        margin_label = "Operating Profit Margin"
+        op_label = "Operating Income"
 
     with col1:
         st.metric("Total Income", f"${current_revenue:,.2f}")
@@ -147,40 +142,54 @@ with st.container(border=True):
     with col4:
         st.metric(margin_label, avg_margin)
         
-st.caption("*Net Cash Flow includes non-operating expenses MTD.")
+if not is_ytd and selected_month == current_month_abbr:
+    st.caption("*Net Cash Flow reflects MTD data and may include non-operating expenses pulled prior to full revenue collection.")
 st.write("") 
 
-# 6. Month-to-Date (MTD) Performance Snapshot
-st.markdown("### Month-to-Date (MTD) Performance Snapshot")
-st.markdown("Real-time operational metrics for the selected period compared to the historical average.")
+# 6. Performance Snapshot
+if is_ytd:
+    st.markdown("### Completed YTD Performance Snapshot")
+    st.markdown("Year-to-Date operational totals. *(Total Memberships displays the count from the most recently completed month).*")
+else:
+    st.markdown("### Month-to-Date (MTD) Performance Snapshot")
+    st.markdown("Real-time operational metrics for the selected period compared to your historical average.")
 
 with st.container(border=True):
     mtd_col1, mtd_col2, mtd_col3, mtd_col4, mtd_col5 = st.columns(5)
     
-    # Calculate Historical Averages for the Trend Indicators
-    avg_members = completed_df["Total Memberships"].mean() if not completed_df.empty else 0
-    avg_cancels = completed_df["Total Cancels"].mean() if not completed_df.empty else 0
-    avg_eft_gain = completed_df["Total EFT Gained"].mean() if not completed_df.empty else 0
-    avg_eft_lost = completed_df["Total EFT Lost"].mean() if not completed_df.empty else 0
+    if is_ytd:
+        # YTD Logic: Sum the performance data (except memberships which is a point-in-time count)
+        mtd_members = completed_df["Total Memberships"].iloc[-1] if not completed_df.empty else 0
+        mtd_cancels = completed_df["Total Cancels"].sum()
+        mtd_eft_gain = completed_df["Total EFT Gained"].sum()
+        mtd_eft_lost = completed_df["Total EFT Lost"].sum()
+        mtd_pt_rev = completed_df["MTD PT Revenue"].sum()
+        
+        # Disable deltas for YTD view as it doesn't compare directly to a 1-month average
+        str_d_members, str_d_cancels, str_d_eft_gain, str_d_eft_lost = None, None, None, None
+        
+    else:
+        # Single Month Logic: Compare current selected month to the historical average
+        avg_members = completed_df["Total Memberships"].mean() if not completed_df.empty else 0
+        avg_cancels = completed_df["Total Cancels"].mean() if not completed_df.empty else 0
+        avg_eft_gain = completed_df["Total EFT Gained"].mean() if not completed_df.empty else 0
+        avg_eft_lost = completed_df["Total EFT Lost"].mean() if not completed_df.empty else 0
 
-    # Pull Current Data
-    mtd_members = view_df["Total Memberships"].iloc[-1] if "Total Memberships" in view_df.columns else 0
-    mtd_cancels = view_df["Total Cancels"].iloc[-1] if "Total Cancels" in view_df.columns else 0
-    mtd_eft_gain = view_df["Total EFT Gained"].iloc[-1] if "Total EFT Gained" in view_df.columns else 0
-    mtd_eft_lost = view_df["Total EFT Lost"].iloc[-1] if "Total EFT Lost" in view_df.columns else 0
-    mtd_pt_rev = view_df["MTD PT Revenue"].iloc[-1] if "MTD PT Revenue" in view_df.columns else 0
+        mtd_members = view_df["Total Memberships"].iloc[-1] if "Total Memberships" in view_df.columns else 0
+        mtd_cancels = view_df["Total Cancels"].iloc[-1] if "Total Cancels" in view_df.columns else 0
+        mtd_eft_gain = view_df["Total EFT Gained"].iloc[-1] if "Total EFT Gained" in view_df.columns else 0
+        mtd_eft_lost = view_df["Total EFT Lost"].iloc[-1] if "Total EFT Lost" in view_df.columns else 0
+        mtd_pt_rev = view_df["MTD PT Revenue"].iloc[-1] if "MTD PT Revenue" in view_df.columns else 0
 
-    # Calculate Deltas
-    d_members = mtd_members - avg_members
-    d_cancels = mtd_cancels - avg_cancels
-    d_eft_gain = mtd_eft_gain - avg_eft_gain
-    d_eft_lost = mtd_eft_lost - avg_eft_lost
+        d_members = mtd_members - avg_members
+        d_cancels = mtd_cancels - avg_cancels
+        d_eft_gain = mtd_eft_gain - avg_eft_gain
+        d_eft_lost = mtd_eft_lost - avg_eft_lost
 
-    # Format Delta Strings
-    str_d_members = f"{'+' if d_members >= 0 else ''}{d_members:,.0f} vs avg"
-    str_d_cancels = f"{'+' if d_cancels >= 0 else ''}{d_cancels:,.0f} vs avg"
-    str_d_eft_gain = f"{'+$' if d_eft_gain >= 0 else '-$'}{abs(d_eft_gain):,.2f} vs avg"
-    str_d_eft_lost = f"{'+$' if d_eft_lost >= 0 else '-$'}{abs(d_eft_lost):,.2f} vs avg"
+        str_d_members = f"{'+' if d_members >= 0 else ''}{d_members:,.0f} vs avg"
+        str_d_cancels = f"{'+' if d_cancels >= 0 else ''}{d_cancels:,.0f} vs avg"
+        str_d_eft_gain = f"{'+$' if d_eft_gain >= 0 else '-$'}{abs(d_eft_gain):,.2f} vs avg"
+        str_d_eft_lost = f"{'+$' if d_eft_lost >= 0 else '-$'}{abs(d_eft_lost):,.2f} vs avg"
 
     with mtd_col1:
         st.metric("Total Memberships", f"{mtd_members:,.0f}", delta=str_d_members)
@@ -191,19 +200,25 @@ with st.container(border=True):
     with mtd_col4:
         st.metric("EFT Lost", f"${mtd_eft_lost:,.2f}", delta=str_d_eft_lost, delta_color="inverse")
     with mtd_col5:
-        st.metric("MTD PT Revenue", f"${mtd_pt_rev:,.2f}")
+        st.metric("PT Revenue (New/Renewals)", f"${mtd_pt_rev:,.2f}")
 
 st.write("") 
 
 # 7. Owner Distribution & Decision Guide
 st.markdown("### Owner Distribution & Decision Guide")
-st.markdown("Review and adjust the baseline distribution scenarios based on live operating constraints.")
+
+if is_ytd:
+    st.markdown("*(Note: The decision guide calculates distributions for a single operational month. Below reflects your most recently completed month.)*")
+    guide_df = completed_df
+else:
+    st.markdown("Review and adjust the baseline distribution scenarios based on live operating constraints.")
+    guide_df = view_df
 
 with st.container(border=True):
-    current_month_name = view_df["Month"].iloc[-1]
-    current_live_revenue = view_df["Total Income"].iloc[-1]
-    current_live_opex = view_df["Operating Expenses"].iloc[-1]
-    is_projected = view_df["Status"].iloc[-1]
+    current_month_name = guide_df["Month"].iloc[-1]
+    current_live_revenue = guide_df["Total Income"].iloc[-1]
+    current_live_opex = guide_df["Operating Expenses"].iloc[-1]
+    is_projected = guide_df["Status"].iloc[-1]
     fixed_debt = 8095
 
     cash_after_fixed = current_live_revenue - current_live_opex - fixed_debt
@@ -249,7 +264,7 @@ with st.container(border=True):
 
 st.write("") 
 
-# 8. Financial Visualizations (Full Width Trend Chart)
+# 8. Financial Visualizations
 st.markdown("### Financial Visualizations")
 
 with st.container(border=True):
