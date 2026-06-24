@@ -134,3 +134,118 @@ if st.checkbox("Show Raw Financial Data"):
         "Non-Operating Expenses": "${:,.2f}",
         "Remaining Cash": "${:,.2f}"
     }))
+# --- ADD THIS TO THE VERY BOTTOM OF app.py ---
+
+st.markdown("---")
+st.markdown("### 🏛️ Owner Distribution & Decision Guide")
+st.markdown("This section calculates the exact draw structure and cash reserve status based on the selected month's live revenue.")
+
+# 1. Define the Waterfall Logic
+def calculate_waterfall(revenue):
+    # Hardcoded fixed obligations based on your table
+    op_ex = 97450
+    debt = 8095
+    
+    # Base minimum draws
+    base_dufresne = 7500
+    base_tushman = 5000
+    
+    # Caps
+    reserve_cap = 2000
+    dufresne_cap = 10000
+    tushman_cap = 10000
+
+    # Step 1: Pay OpEx and Debt
+    cash_after_fixed = revenue - op_ex - debt
+    
+    # Step 2: Pay Base Draws (even if it causes a deficit, per the table)
+    dufresne_actual = base_dufresne
+    tushman_actual = base_tushman
+    cash_after_base = cash_after_fixed - dufresne_actual - tushman_actual
+    
+    # Step 3: Fund Reserve (up to $2k cap)
+    reserve_actual = 0
+    if cash_after_base > 0:
+        reserve_actual = min(cash_after_base, reserve_cap)
+    cash_after_reserve = cash_after_base - reserve_actual
+    
+    # Step 4: Grow DuFresne (up to $10k cap)
+    if cash_after_reserve > 0:
+        dufresne_extra = min(cash_after_reserve, dufresne_cap - base_dufresne)
+        dufresne_actual += dufresne_extra
+        cash_after_reserve -= dufresne_extra
+        
+    # Step 5: Grow Tushman (up to $10k cap)
+    if cash_after_reserve > 0:
+        tushman_extra = min(cash_after_reserve, tushman_cap - base_tushman)
+        tushman_actual += tushman_extra
+        cash_after_reserve -= tushman_extra
+        
+    # Step 6: Remaining is Surplus/Deficit
+    surplus_deficit = cash_after_reserve
+    
+    # Determine Status
+    if surplus_deficit < 0:
+        if revenue >= 116000:
+            status = "🟡 Almost breakeven. Deficit narrowing."
+        else:
+            status = "🔴 Both mins paid. Cash reserve absorbs loss."
+    elif surplus_deficit == 0 and reserve_actual == 0:
+        status = "🟡 Exact breakeven. Both at base mins."
+    elif reserve_actual > 0 and reserve_actual < reserve_cap:
+        status = "🟢 Reserve building."
+    elif reserve_actual == reserve_cap and dufresne_actual < dufresne_cap:
+        status = "🟢 DuFresne growing."
+    elif dufresne_actual == dufresne_cap and tushman_actual < tushman_cap:
+        status = "🟢 Tushman growing."
+    else:
+        status = f"✅ Both capped. Surplus building (${surplus_deficit:,.0f})."
+        
+    return {
+        "Revenue": revenue,
+        "OpEx": op_ex,
+        "Debt": debt,
+        "DuFresne": dufresne_actual,
+        "Tushman": tushman_actual,
+        "Reserve": reserve_actual,
+        "Surplus/Deficit": surplus_deficit,
+        "Decision": status
+    }
+
+# 2. Apply to Current Month
+# We use the most recent month's revenue from the filtered view_df
+current_month_name = view_df["Month"].iloc[-1]
+current_live_revenue = view_df["Total Income"].iloc[-1]
+
+waterfall_result = calculate_waterfall(current_live_revenue)
+
+# 3. Display the Output
+st.markdown(f"**Based on {current_month_name} Revenue:** `${current_live_revenue:,.2f}`")
+
+# Create a clean layout for the waterfall
+wf_col1, wf_col2, wf_col3 = st.columns(3)
+
+with wf_col1:
+    st.info(f"**DuFresne Draw:**\n\n${waterfall_result['DuFresne']:,.2f}")
+with wf_col2:
+    st.info(f"**Tushman Draw:**\n\n${waterfall_result['Tushman']:,.2f}")
+with wf_col3:
+    st.info(f"**Cash Reserve Added:**\n\n${waterfall_result['Reserve']:,.2f}")
+
+# Display Status and Deficit/Surplus
+if waterfall_result['Surplus/Deficit'] < 0:
+    st.error(f"**Status:** {waterfall_result['Decision']} | **Deficit:** ${waterfall_result['Surplus/Deficit']:,.2f}")
+elif waterfall_result['Surplus/Deficit'] > 0:
+    st.success(f"**Status:** {waterfall_result['Decision']} | **Surplus:** ${waterfall_result['Surplus/Deficit']:,.2f}")
+else:
+    st.warning(f"**Status:** {waterfall_result['Decision']} | **Surplus/Deficit:** $0.00")
+
+# 4. Optional: "What-If" Calculator
+st.markdown("#### 🧮 What-If Simulator")
+st.caption("Adjust the slider to see how future revenue changes the distribution.")
+sim_revenue = st.slider("Simulate Total Revenue:", min_value=100000, max_value=140000, value=int(current_live_revenue), step=1000)
+
+sim_result = calculate_waterfall(sim_revenue)
+
+st.write(f"If revenue hits **${sim_revenue:,.0f}**, the result is:")
+st.markdown(f"> {sim_result['Decision']} | DuFresne: **${sim_result['DuFresne']:,.0f}** | Tushman: **${sim_result['Tushman']:,.0f}** | Reserve: **${sim_result['Reserve']:,.0f}**")
