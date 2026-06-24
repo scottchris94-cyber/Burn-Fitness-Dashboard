@@ -7,7 +7,7 @@ from datetime import datetime
 # 1. Page Configuration
 st.set_page_config(page_title="Burn Fitness Financials", layout="wide", initial_sidebar_state="expanded")
 
-# Custom CSS to force a cleaner, modern look
+# Custom CSS for a clean, modern corporate feel
 st.markdown("""
     <style>
     .block-container { padding-top: 2rem; padding-bottom: 2rem; }
@@ -24,9 +24,11 @@ def load_data(url):
     df = pd.read_csv(url)
     df = df.dropna(how='all')
     
+    # Added new MTD columns to the numerical conversion list
     numeric_cols = [
         "Total Income", "Operating Expenses", "Non-Operating Expenses", 
-        "Remaining Cash", "PT Revenue", "Membership Dues", "Total Payroll"
+        "Remaining Cash", "PT Revenue", "Membership Dues", "Total Payroll",
+        "Total Memberships", "Total Cancels", "Total EFT Gained", "Total EFT Lost", "MTD PT Revenue"
     ]
     
     for col in numeric_cols:
@@ -62,6 +64,11 @@ for m in all_months:
         "PT Revenue": pt_revenue,
         "Membership Dues": mem_dues,
         "Total Payroll": 0, 
+        "Total Memberships": 0,
+        "Total Cancels": 0,
+        "Total EFT Gained": 0,
+        "Total EFT Lost": 0,
+        "MTD PT Revenue": 0,
         "Status": "Projected"
     })
 
@@ -96,9 +103,9 @@ else:
 
 # 4. Main Header
 st.title("Burn Fitness 2, LLC")
-st.markdown("### Executive Financial Overview")
 
-# 5. Top KPI Row (Modern Card Design)
+# 5. Top KPI Row (Executive Financial Overview)
+st.markdown("### Executive Financial Overview")
 with st.container(border=True):
     col1, col2, col3, col4 = st.columns(4)
     current_revenue = kpi_df["Total Income"].sum()
@@ -117,7 +124,34 @@ with st.container(border=True):
 
 st.write("") # Spacing
 
-# 6. Owner Distribution & Decision Guide (Moved Up)
+# 6. Month-to-Date (MTD) Performance Snapshot
+st.markdown("### Month-to-Date (MTD) Performance Snapshot")
+st.markdown("Real-time operational metrics for the selected period.")
+
+with st.container(border=True):
+    mtd_col1, mtd_col2, mtd_col3, mtd_col4, mtd_col5 = st.columns(5)
+    
+    # Pull the exact data from the most recent row of the user's selected view
+    mtd_members = view_df["Total Memberships"].iloc[-1] if "Total Memberships" in view_df.columns else 0
+    mtd_cancels = view_df["Total Cancels"].iloc[-1] if "Total Cancels" in view_df.columns else 0
+    mtd_eft_gain = view_df["Total EFT Gained"].iloc[-1] if "Total EFT Gained" in view_df.columns else 0
+    mtd_eft_lost = view_df["Total EFT Lost"].iloc[-1] if "Total EFT Lost" in view_df.columns else 0
+    mtd_pt_rev = view_df["MTD PT Revenue"].iloc[-1] if "MTD PT Revenue" in view_df.columns else 0
+
+    with mtd_col1:
+        st.metric("Total Memberships", f"{mtd_members:,.0f}")
+    with mtd_col2:
+        st.metric("Total Cancels", f"{mtd_cancels:,.0f}")
+    with mtd_col3:
+        st.metric("EFT Gained", f"${mtd_eft_gain:,.2f}")
+    with mtd_col4:
+        st.metric("EFT Lost", f"${mtd_eft_lost:,.2f}")
+    with mtd_col5:
+        st.metric("MTD PT Revenue", f"${mtd_pt_rev:,.2f}")
+
+st.write("") # Spacing
+
+# 7. Owner Distribution & Decision Guide
 st.markdown("### Owner Distribution & Decision Guide")
 st.markdown("Review and adjust the baseline distribution scenarios based on live operating constraints.")
 
@@ -173,12 +207,10 @@ with st.container(border=True):
 
 st.write("") # Spacing
 
-# 7. Modern Financial Charts
+# 8. Financial Visualizations (Full Width Trend Chart)
 st.markdown("### Financial Visualizations")
 
-chart_col1, chart_col2 = st.columns(2)
-
-with chart_col1:
+with st.container(border=True):
     st.markdown("**Annual Revenue vs. Expenses Trend**")
     fig_trend = go.Figure()
     
@@ -204,43 +236,12 @@ with chart_col1:
         xaxis=dict(showgrid=False),
         yaxis=dict(showgrid=True, gridcolor="#f1f5f9")
     )
+    # Using use_container_width expands this beautifully across the entire dashboard
     st.plotly_chart(fig_trend, use_container_width=True)
-
-with chart_col2:
-    st.markdown(f"**Monthly Cash Flow Waterfall ({current_month_name})**")
-    
-    # Highly professional waterfall chart to visualize the selected month's exact cash flow
-    fig_waterfall = go.Figure(go.Waterfall(
-        name="20", orientation="v",
-        measure=["relative", "relative", "relative", "relative", "relative", "relative", "total"],
-        x=["Revenue", "OpEx", "Debt", "DuFresne", "Tushman", "Reserve", "Final Balance"],
-        y=[
-            current_live_revenue, 
-            -current_live_opex, 
-            -fixed_debt, 
-            -test_dufresne, 
-            -test_tushman, 
-            -test_reserve, 
-            final_balance
-        ],
-        connector={"line":{"color":"#cbd5e1"}},
-        decreasing={"marker":{"color":"#ef4444"}}, # Professional red
-        increasing={"marker":{"color":"#10b981"}}, # Professional green
-        totals={"marker":{"color":"#3b82f6"}}      # Professional blue
-    ))
-    
-    fig_waterfall.update_layout(
-        template="plotly_white",
-        margin=dict(t=10, b=10, l=0, r=0),
-        showlegend=False,
-        xaxis=dict(showgrid=False),
-        yaxis=dict(showgrid=True, gridcolor="#f1f5f9")
-    )
-    st.plotly_chart(fig_waterfall, use_container_width=True)
 
 st.write("")
 
-# 8. Raw Data Table Toggle
+# 9. Raw Data Table Toggle
 with st.expander("View Raw Financial Data"):
     st.dataframe(df.style.format({
         "Total Income": "${:,.2f}",
@@ -248,5 +249,10 @@ with st.expander("View Raw Financial Data"):
         "Non-Operating Expenses": "${:,.2f}",
         "PT Revenue": "${:,.2f}",
         "Membership Dues": "${:,.2f}",
-        "Remaining Cash": "${:,.2f}"
+        "Remaining Cash": "${:,.2f}",
+        "Total Memberships": "{:,.0f}",
+        "Total Cancels": "{:,.0f}",
+        "Total EFT Gained": "${:,.2f}",
+        "Total EFT Lost": "${:,.2f}",
+        "MTD PT Revenue": "${:,.2f}"
     }), use_container_width=True)
