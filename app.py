@@ -90,10 +90,9 @@ current_month_abbr = datetime.now().strftime("%b")
 
 if selected_month != "All Year to Date":
     view_df = df[df["Month"] == selected_month]
-    kpi_df = view_df  # If they select a specific month, show that month's KPIs
+    kpi_df = view_df  
 else:
     view_df = df
-    # Exclude the current incomplete month and future projections from YTD KPIs
     kpi_df = df[(df["Status"] == "Actual") & (df["Month"] != current_month_abbr)]
 
 # 4. Main Header
@@ -123,7 +122,6 @@ st.markdown("---")
 st.markdown("#### Operating Cash Flow (Revenue vs Expenses)")
 fig_cash = go.Figure()
 
-# Differentiate Actual vs Projected in the chart colors
 colors_income = ["#2ecc71" if status == "Actual" else "#82e0aa" for status in df["Status"]]
 colors_expense = ["#e74c3c" if status == "Actual" else "#f1948a" for status in df["Status"]]
 
@@ -145,106 +143,60 @@ fig_drain.update_layout(height=350, margin=dict(t=10, b=0, l=0, r=0))
 st.plotly_chart(fig_drain, use_container_width=True)
 st.caption("Compares floor profitability to the cash leaving for owner draws and loans.")
 
-# 8. Owner Distribution & Decision Guide
+# 8. Owner Distribution & Decision Guide (Editable Fields)
 st.markdown("---")
 st.markdown("### Owner Distribution & Decision Guide")
-st.markdown("This section calculates the exact draw structure and cash reserve status based on the selected month's revenue and live operating expenses.")
+st.markdown("The fields below are populated with the suggested waterfall distribution based on the selected month's live revenue and operating expenses. You can edit these amounts to test custom scenarios and see how it impacts the final cash balance.")
 
-def calculate_waterfall(revenue, op_ex):
-    debt = 8095
-    base_dufresne = 7500
-    base_tushman = 5000
-    reserve_cap = 2000
-    dufresne_cap = 10000
-    tushman_cap = 10000
-
-    cash_after_fixed = revenue - op_ex - debt
-    
-    dufresne_actual = base_dufresne
-    tushman_actual = base_tushman
-    cash_after_base = cash_after_fixed - dufresne_actual - tushman_actual
-    
-    reserve_actual = 0
-    if cash_after_base > 0:
-        reserve_actual = min(cash_after_base, reserve_cap)
-    cash_after_reserve = cash_after_base - reserve_actual
-    
-    if cash_after_reserve > 0:
-        dufresne_extra = min(cash_after_reserve, dufresne_cap - base_dufresne)
-        dufresne_actual += dufresne_extra
-        cash_after_reserve -= dufresne_extra
-        
-    if cash_after_reserve > 0:
-        tushman_extra = min(cash_after_reserve, tushman_cap - base_tushman)
-        tushman_actual += tushman_extra
-        cash_after_reserve -= tushman_extra
-        
-    surplus_deficit = cash_after_reserve
-    
-    if surplus_deficit < 0:
-        # Using dynamic OpEx changes the breakeven math, so we calculate the threshold rather than hardcode 116000
-        breakeven_point = op_ex + debt + base_dufresne + base_tushman
-        if revenue >= (breakeven_point - 2000):
-            status = "Alert: Almost breakeven. Deficit narrowing."
-        else:
-            status = "Alert: Both mins paid. Cash reserve absorbs loss."
-    elif surplus_deficit == 0 and reserve_actual == 0:
-        status = "Warning: Exact breakeven. Both at base mins."
-    elif reserve_actual > 0 and reserve_actual < reserve_cap:
-        status = "Good: Reserve building."
-    elif reserve_actual == reserve_cap and dufresne_actual < dufresne_cap:
-        status = "Good: DuFresne growing."
-    elif dufresne_actual == dufresne_cap and tushman_actual < tushman_cap:
-        status = "Good: Tushman growing."
-    else:
-        status = f"Excellent: Both capped. Surplus building (${surplus_deficit:,.0f})."
-        
-    return {
-        "Revenue": revenue,
-        "OpEx": op_ex,
-        "DuFresne": dufresne_actual,
-        "Tushman": tushman_actual,
-        "Reserve": reserve_actual,
-        "Surplus/Deficit": surplus_deficit,
-        "Decision": status
-    }
-
-# Apply to Current Month View
 current_month_name = view_df["Month"].iloc[-1]
 current_live_revenue = view_df["Total Income"].iloc[-1]
 current_live_opex = view_df["Operating Expenses"].iloc[-1]
 is_projected = view_df["Status"].iloc[-1]
+fixed_debt = 8095
 
-waterfall_result = calculate_waterfall(current_live_revenue, current_live_opex)
+# Calculate suggested baseline defaults
+cash_after_fixed = current_live_revenue - current_live_opex - fixed_debt
+s_dufresne = 7500
+s_tushman = 5000
+cash_after_base = cash_after_fixed - s_dufresne - s_tushman
+
+s_reserve = 0
+if cash_after_base > 0:
+    s_reserve = min(cash_after_base, 2000)
+cash_after_reserve = cash_after_base - s_reserve
+
+if cash_after_reserve > 0:
+    d_extra = min(cash_after_reserve, 2500)
+    s_dufresne += d_extra
+    cash_after_reserve -= d_extra
+    
+if cash_after_reserve > 0:
+    t_extra = min(cash_after_reserve, 5000)
+    s_tushman += t_extra
+    cash_after_reserve -= t_extra
 
 st.markdown(f"**Based on {current_month_name} Revenue ({is_projected}):** `${current_live_revenue:,.2f}` | **Operating Expenses:** `${current_live_opex:,.2f}`")
 
 wf_col1, wf_col2, wf_col3 = st.columns(3)
 
 with wf_col1:
-    st.info(f"**DuFresne Draw:**\n\n${waterfall_result['DuFresne']:,.2f}")
+    test_dufresne = st.number_input("DuFresne Draw", value=float(s_dufresne), step=500.0)
 with wf_col2:
-    st.info(f"**Tushman Draw:**\n\n${waterfall_result['Tushman']:,.2f}")
+    test_tushman = st.number_input("Tushman Draw", value=float(s_tushman), step=500.0)
 with wf_col3:
-    st.info(f"**Cash Reserve Added:**\n\n${waterfall_result['Reserve']:,.2f}")
+    test_reserve = st.number_input("Cash Reserve Added", value=float(s_reserve), step=500.0)
 
-if waterfall_result['Surplus/Deficit'] < 0:
-    st.error(f"**Status:** {waterfall_result['Decision']} | **Deficit:** ${waterfall_result['Surplus/Deficit']:,.2f}")
-elif waterfall_result['Surplus/Deficit'] > 0:
-    st.success(f"**Status:** {waterfall_result['Decision']} | **Surplus:** ${waterfall_result['Surplus/Deficit']:,.2f}")
+# Calculate final balance based on the user's manual inputs
+final_balance = current_live_revenue - current_live_opex - fixed_debt - test_dufresne - test_tushman - test_reserve
+
+if final_balance < 0:
+    st.error(f"Status: Alert - This scenario results in a cash deficit. | Deficit: ${final_balance:,.2f}")
+elif final_balance > 0:
+    st.success(f"Status: Excellent - This scenario results in a retained surplus. | Surplus: ${final_balance:,.2f}")
 else:
-    st.warning(f"**Status:** {waterfall_result['Decision']} | **Surplus/Deficit:** $0.00")
+    st.warning(f"Status: Exact Breakeven. All cash allocated. | Remaining Balance: $0.00")
 
-# 9. What-If Simulator
-st.markdown("#### What-If Simulator")
-st.caption(f"Adjust the slider to see how future revenue changes the distribution against your current OpEx (${current_live_opex:,.0f}).")
-sim_revenue = st.slider("Simulate Total Revenue:", min_value=100000, max_value=140000, value=int(current_live_revenue), step=1000)
-sim_result = calculate_waterfall(sim_revenue, current_live_opex)
-
-st.write(f"If revenue hits **${sim_revenue:,.0f}**, the result is:")
-st.markdown(f"> {sim_result['Decision']} | DuFresne: **${sim_result['DuFresne']:,.0f}** | Tushman: **${sim_result['Tushman']:,.0f}** | Reserve: **${sim_result['Reserve']:,.0f}**")
-
-# 10. Raw Data Table Toggle
+# 9. Raw Data Table Toggle
 if st.checkbox("Show Raw Financial Data"):
     st.dataframe(df.style.format({
         "Total Income": "${:,.2f}",
