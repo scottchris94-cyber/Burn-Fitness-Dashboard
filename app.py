@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
+import os
 
 # 1. Page Configuration
 st.set_page_config(page_title="Burn Fitness Financials", layout="wide", initial_sidebar_state="expanded")
@@ -17,7 +18,7 @@ st.markdown("""
 
 # 2. Load Live Data & Generate Projections
 # MAKE SURE your actual published CSV link is between the quotes below
-sheet_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRHzA-fwBnL6URgQpHeM6ezWfk46qhlKwVgtBXm9vqJkRjOS9rXhngAE1VCbjyxhQ/pub?gid=237304684&single=true&output=csv"
+sheet_url = "PASTE_YOUR_COPIED_LINK_HERE"
 
 @st.cache_data(ttl=600)
 def load_data(url):
@@ -37,7 +38,6 @@ def load_data(url):
             
     df = df.fillna(0)
     
-    # Calculate derived financial columns natively for all rows (including YTD/AVG)
     if "Total Income" in df.columns and "Operating Expenses" in df.columns:
         df["Operating Income"] = df["Total Income"] - df["Operating Expenses"]
         df["Profit Margin (%)"] = (df["Operating Income"] / df["Total Income"]) * 100
@@ -48,11 +48,9 @@ def load_data(url):
 try:
     df_live_full = load_data(sheet_url)
     
-    # Extract the user-defined YTD and AVG rows directly from Google Sheets
     ytd_row = df_live_full[df_live_full["Month"] == "YTD"].copy()
     avg_row = df_live_full[df_live_full["Month"] == "AVG"].copy()
     
-    # Isolate strictly the actual chronological months for the main dataframe
     df_live = df_live_full[~df_live_full["Month"].isin(["YTD", "AVG"])].copy()
     df_live["Status"] = "Actual"
 except:
@@ -99,12 +97,16 @@ else:
 df["Month_Num"] = pd.Categorical(df["Month"], categories=all_months, ordered=True)
 df = df.sort_values("Month_Num").drop(columns=["Month_Num"])
 
-# Ensure columns exist for the merged dataframe
 if "Operating Income" not in df.columns:
     df["Operating Income"] = df["Total Income"] - df["Operating Expenses"]
     df["Profit Margin (%)"] = (df["Operating Income"] / df["Total Income"]) * 100
 
 # 3. Sidebar Configuration
+try:
+    st.sidebar.image("burnlogo.png", use_container_width=True)
+except Exception:
+    pass
+
 st.sidebar.title("Dashboard Controls")
 st.sidebar.markdown("Filter data by month for the owner review. Future months display projected targets.")
 
@@ -113,7 +115,6 @@ ytd_label = "Completed Year-to-Date (Excludes Active Month)"
 
 selected_month = st.sidebar.selectbox("Select Month", [ytd_label] + df["Month"].tolist())
 
-# Establish a strictly "Completed" dataframe for the distribution guide
 completed_df = df[(df["Status"] == "Actual") & (df["Month"] != current_month_abbr)]
 
 if selected_month == ytd_label:
@@ -195,7 +196,6 @@ with st.container(border=True):
         avg_eft_gain = avg_row["Total EFT Gained"].values[0] if not avg_row.empty else 0
         avg_eft_lost = avg_row["Total EFT Lost"].values[0] if not avg_row.empty else 0
 
-        # Safety Check: ensure view_df is not empty before pulling the last row
         mtd_members = view_df["Total Memberships"].iloc[-1] if not view_df.empty and "Total Memberships" in view_df.columns else 0
         mtd_cancels = view_df["Total Cancels"].iloc[-1] if not view_df.empty and "Total Cancels" in view_df.columns else 0
         mtd_eft_gain = view_df["Total EFT Gained"].iloc[-1] if not view_df.empty and "Total EFT Gained" in view_df.columns else 0
@@ -236,7 +236,6 @@ else:
     guide_df = view_df
 
 with st.container(border=True):
-    # Safety Check: ensure guide_df is not empty before parsing
     if not guide_df.empty:
         current_month_name = guide_df["Month"].iloc[-1]
         current_live_revenue = guide_df["Total Income"].iloc[-1]
