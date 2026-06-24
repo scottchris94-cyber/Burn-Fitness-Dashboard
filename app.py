@@ -267,7 +267,6 @@ with st.container(border=True):
     
     st.markdown(f"**Scenario Basis: {current_month_name} ({is_projected})**")
 
-    # Editable Revenue Field integrated directly into the layout
     rev_col, opex_col, debt_col = st.columns(3)
     with rev_col:
         test_revenue = st.number_input("Projected Total Revenue", value=float(current_live_revenue), step=1000.0)
@@ -276,10 +275,9 @@ with st.container(border=True):
     with debt_col:
         st.metric("Fixed Debt Service", f"${fixed_debt:,.2f}")
 
-    # Waterfall logic recalculates dynamically based on the 'test_revenue' input
     cash_after_fixed = test_revenue - current_live_opex - fixed_debt
     s_dufresne = 7500
-    s_tushman = 0  # Updated to default to 0
+    s_tushman = 0  
     cash_after_base = cash_after_fixed - s_dufresne - s_tushman
 
     s_reserve = 0
@@ -297,7 +295,7 @@ with st.container(border=True):
         s_tushman += t_extra
         cash_after_reserve -= t_extra
     
-    st.write("") # Spacing
+    st.write("") 
     
     wf_col1, wf_col2, wf_col3 = st.columns(3)
 
@@ -309,7 +307,6 @@ with st.container(border=True):
     with wf_col3:
         test_reserve = st.number_input("Cash Reserve Added", value=float(s_reserve), step=500.0)
 
-    # Final math executed against the manual revenue input
     final_balance = test_revenue - current_live_opex - fixed_debt - test_dufresne - test_tushman - test_reserve
 
     if final_balance < 0:
