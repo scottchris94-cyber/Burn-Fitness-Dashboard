@@ -17,7 +17,7 @@ st.markdown("""
 
 # 2. Load Live Data & Generate Projections
 # MAKE SURE your actual published CSV link is between the quotes below
-sheet_url = "PASTE_YOUR_COPIED_LINK_HERE"
+sheet_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRHzA-fwBnL6URgQpHeM6ezWfk46qhlKwVgtBXm9vqJkRjOS9rXhngAE1VCbjyxhQ/pub?gid=237304684&single=true&output=csv"
 
 @st.cache_data(ttl=600)
 def load_data(url):
@@ -117,7 +117,6 @@ selected_month = st.sidebar.selectbox("Select Month", [ytd_label] + df["Month"].
 completed_df = df[(df["Status"] == "Actual") & (df["Month"] != current_month_abbr)]
 
 if selected_month == ytd_label:
-    # We bypass view_df entirely for metrics and use the YTD row you built in Sheets
     is_ytd = True
     view_df = completed_df 
 else:
@@ -133,7 +132,6 @@ with st.container(border=True):
     col1, col2, col3, col4 = st.columns(4)
     
     if is_ytd:
-        # Pull directly from your YTD row in Google Sheets
         current_revenue = ytd_row["Total Income"].values[0] if not ytd_row.empty else 0
         current_op_income = ytd_row["Operating Income"].values[0] if not ytd_row.empty else 0
         current_cash = ytd_row["Remaining Cash"].values[0] if not ytd_row.empty else 0
@@ -142,7 +140,6 @@ with st.container(border=True):
         margin_label = "Operating Margin (Completed YTD)"
         op_label = "Operating Income"
     elif selected_month == current_month_abbr:
-        # Live active month
         current_revenue = view_df["Total Income"].sum()
         current_op_income = view_df["Operating Income"].sum()
         current_cash = view_df["Remaining Cash"].sum()
@@ -151,11 +148,10 @@ with st.container(border=True):
         margin_label = "Operating Profit Margin"
         op_label = "Operating Income (Incomplete)"
     else:
-        # Standard completed month
         current_revenue = view_df["Total Income"].sum()
         current_op_income = view_df["Operating Income"].sum()
         current_cash = view_df["Remaining Cash"].sum()
-        avg_margin = f"{view_df['Profit Margin (%)'].mean():.1f}%"
+        avg_margin = f"{view_df['Profit Margin (%)'].mean():.1f}%" if not view_df.empty else "0.0%"
         
         margin_label = "Operating Profit Margin"
         op_label = "Operating Income"
@@ -185,7 +181,6 @@ with st.container(border=True):
     mtd_col1, mtd_col2, mtd_col3, mtd_col4, mtd_col5 = st.columns(5)
     
     if is_ytd:
-        # Pull directly from your YTD row in Google Sheets
         mtd_members = ytd_row["Total Memberships"].values[0] if not ytd_row.empty else 0
         mtd_cancels = ytd_row["Total Cancels"].values[0] if not ytd_row.empty else 0
         mtd_eft_gain = ytd_row["Total EFT Gained"].values[0] if not ytd_row.empty else 0
@@ -195,17 +190,17 @@ with st.container(border=True):
         str_d_members, str_d_cancels, str_d_eft_gain, str_d_eft_lost = None, None, None, None
         
     else:
-        # Compare current selected month to your custom AVG row in Google Sheets
         avg_members = avg_row["Total Memberships"].values[0] if not avg_row.empty else 0
         avg_cancels = avg_row["Total Cancels"].values[0] if not avg_row.empty else 0
         avg_eft_gain = avg_row["Total EFT Gained"].values[0] if not avg_row.empty else 0
         avg_eft_lost = avg_row["Total EFT Lost"].values[0] if not avg_row.empty else 0
 
-        mtd_members = view_df["Total Memberships"].iloc[-1] if "Total Memberships" in view_df.columns else 0
-        mtd_cancels = view_df["Total Cancels"].iloc[-1] if "Total Cancels" in view_df.columns else 0
-        mtd_eft_gain = view_df["Total EFT Gained"].iloc[-1] if "Total EFT Gained" in view_df.columns else 0
-        mtd_eft_lost = view_df["Total EFT Lost"].iloc[-1] if "Total EFT Lost" in view_df.columns else 0
-        mtd_pt_rev = view_df["MTD PT Revenue"].iloc[-1] if "MTD PT Revenue" in view_df.columns else 0
+        # Safety Check: ensure view_df is not empty before pulling the last row
+        mtd_members = view_df["Total Memberships"].iloc[-1] if not view_df.empty and "Total Memberships" in view_df.columns else 0
+        mtd_cancels = view_df["Total Cancels"].iloc[-1] if not view_df.empty and "Total Cancels" in view_df.columns else 0
+        mtd_eft_gain = view_df["Total EFT Gained"].iloc[-1] if not view_df.empty and "Total EFT Gained" in view_df.columns else 0
+        mtd_eft_lost = view_df["Total EFT Lost"].iloc[-1] if not view_df.empty and "Total EFT Lost" in view_df.columns else 0
+        mtd_pt_rev = view_df["MTD PT Revenue"].iloc[-1] if not view_df.empty and "MTD PT Revenue" in view_df.columns else 0
 
         d_members = mtd_members - avg_members
         d_cancels = mtd_cancels - avg_cancels
@@ -241,10 +236,18 @@ else:
     guide_df = view_df
 
 with st.container(border=True):
-    current_month_name = guide_df["Month"].iloc[-1]
-    current_live_revenue = guide_df["Total Income"].iloc[-1]
-    current_live_opex = guide_df["Operating Expenses"].iloc[-1]
-    is_projected = guide_df["Status"].iloc[-1]
+    # Safety Check: ensure guide_df is not empty before parsing
+    if not guide_df.empty:
+        current_month_name = guide_df["Month"].iloc[-1]
+        current_live_revenue = guide_df["Total Income"].iloc[-1]
+        current_live_opex = guide_df["Operating Expenses"].iloc[-1]
+        is_projected = guide_df["Status"].iloc[-1]
+    else:
+        current_month_name = "N/A"
+        current_live_revenue = 0.0
+        current_live_opex = 0.0
+        is_projected = "No Data"
+        
     fixed_debt = 8095
 
     cash_after_fixed = current_live_revenue - current_live_opex - fixed_debt
