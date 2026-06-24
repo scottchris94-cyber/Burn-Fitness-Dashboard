@@ -24,7 +24,6 @@ def load_data(url):
     df = pd.read_csv(url)
     df = df.dropna(how='all')
     
-    # Added new MTD columns to the numerical conversion list
     numeric_cols = [
         "Total Income", "Operating Expenses", "Non-Operating Expenses", 
         "Remaining Cash", "PT Revenue", "Membership Dues", "Total Payroll",
@@ -94,12 +93,13 @@ selected_month = st.sidebar.selectbox("Select Month", ["All Year to Date"] + df[
 
 current_month_abbr = datetime.now().strftime("%b")
 
+# Establish a strictly "Completed" dataframe to calculate accurate historical averages
+completed_df = df[(df["Status"] == "Actual") & (df["Month"] != current_month_abbr)]
+
 if selected_month != "All Year to Date":
-    view_df = df[df["Month"] == selected_month]
-    kpi_df = view_df  
+    view_df = df[df["Month"] == selected_month] 
 else:
     view_df = df
-    kpi_df = df[(df["Status"] == "Actual") & (df["Month"] != current_month_abbr)]
 
 # 4. Main Header
 st.title("Burn Fitness 2, LLC")
@@ -108,48 +108,92 @@ st.title("Burn Fitness 2, LLC")
 st.markdown("### Executive Financial Overview")
 with st.container(border=True):
     col1, col2, col3, col4 = st.columns(4)
-    current_revenue = kpi_df["Total Income"].sum()
-    current_op_income = kpi_df["Operating Income"].sum()
-    current_cash = kpi_df["Remaining Cash"].sum()
-    avg_margin = kpi_df["Profit Margin (%)"].mean()
+    
+    if selected_month == "All Year to Date":
+        # YTD includes all actuals for revenue and cash flow
+        current_revenue = df[df["Status"] == "Actual"]["Total Income"].sum()
+        current_op_income = df[df["Status"] == "Actual"]["Operating Income"].sum()
+        current_cash = df[df["Status"] == "Actual"]["Remaining Cash"].sum()
+        
+        # Margin is strictly calculated against completed months to avoid MTD skew
+        comp_rev = completed_df["Total Income"].sum()
+        comp_op = completed_df["Operating Income"].sum()
+        avg_margin = f"{(comp_op / comp_rev * 100):.1f}%" if comp_rev > 0 else "0.0%"
+        
+        margin_label = "Operating Profit Margin (Completed YTD)"
+        op_label = "Operating Income (MTD)"
+        
+    else:
+        current_revenue = view_df["Total Income"].sum()
+        current_op_income = view_df["Operating Income"].sum()
+        current_cash = view_df["Remaining Cash"].sum()
+        
+        # If viewing the active month, mask the margin to prevent false loss alarms
+        if selected_month == current_month_abbr:
+            avg_margin = "N/A (Active Month)"
+            margin_label = "Operating Profit Margin"
+            op_label = "Operating Income (Incomplete)"
+        else:
+            avg_margin = f"{view_df['Profit Margin (%)'].mean():.1f}%"
+            margin_label = "Operating Profit Margin"
+            op_label = "Operating Income"
 
     with col1:
-        st.metric("Total Income (YTD Completed)", f"${current_revenue:,.2f}")
+        st.metric("Total Income", f"${current_revenue:,.2f}")
     with col2:
-        st.metric("Operating Income", f"${current_op_income:,.2f}")
+        st.metric(op_label, f"${current_op_income:,.2f}")
     with col3:
         st.metric("Net Cash Flow", f"${current_cash:,.2f}")
     with col4:
-        st.metric("Operating Profit Margin", f"{avg_margin:.1f}%")
-
-st.write("") # Spacing
+        st.metric(margin_label, avg_margin)
+        
+st.caption("*Net Cash Flow includes non-operating expenses MTD.")
+st.write("") 
 
 # 6. Month-to-Date (MTD) Performance Snapshot
 st.markdown("### Month-to-Date (MTD) Performance Snapshot")
-st.markdown("Real-time operational metrics for the selected period.")
+st.markdown("Real-time operational metrics for the selected period compared to the historical average.")
 
 with st.container(border=True):
     mtd_col1, mtd_col2, mtd_col3, mtd_col4, mtd_col5 = st.columns(5)
     
-    # Pull the exact data from the most recent row of the user's selected view
+    # Calculate Historical Averages for the Trend Indicators
+    avg_members = completed_df["Total Memberships"].mean() if not completed_df.empty else 0
+    avg_cancels = completed_df["Total Cancels"].mean() if not completed_df.empty else 0
+    avg_eft_gain = completed_df["Total EFT Gained"].mean() if not completed_df.empty else 0
+    avg_eft_lost = completed_df["Total EFT Lost"].mean() if not completed_df.empty else 0
+
+    # Pull Current Data
     mtd_members = view_df["Total Memberships"].iloc[-1] if "Total Memberships" in view_df.columns else 0
     mtd_cancels = view_df["Total Cancels"].iloc[-1] if "Total Cancels" in view_df.columns else 0
     mtd_eft_gain = view_df["Total EFT Gained"].iloc[-1] if "Total EFT Gained" in view_df.columns else 0
     mtd_eft_lost = view_df["Total EFT Lost"].iloc[-1] if "Total EFT Lost" in view_df.columns else 0
     mtd_pt_rev = view_df["MTD PT Revenue"].iloc[-1] if "MTD PT Revenue" in view_df.columns else 0
 
+    # Calculate Deltas
+    d_members = mtd_members - avg_members
+    d_cancels = mtd_cancels - avg_cancels
+    d_eft_gain = mtd_eft_gain - avg_eft_gain
+    d_eft_lost = mtd_eft_lost - avg_eft_lost
+
+    # Format Delta Strings
+    str_d_members = f"{'+' if d_members >= 0 else ''}{d_members:,.0f} vs avg"
+    str_d_cancels = f"{'+' if d_cancels >= 0 else ''}{d_cancels:,.0f} vs avg"
+    str_d_eft_gain = f"{'+$' if d_eft_gain >= 0 else '-$'}{abs(d_eft_gain):,.2f} vs avg"
+    str_d_eft_lost = f"{'+$' if d_eft_lost >= 0 else '-$'}{abs(d_eft_lost):,.2f} vs avg"
+
     with mtd_col1:
-        st.metric("Total Memberships", f"{mtd_members:,.0f}")
+        st.metric("Total Memberships", f"{mtd_members:,.0f}", delta=str_d_members)
     with mtd_col2:
-        st.metric("Total Cancels", f"{mtd_cancels:,.0f}")
+        st.metric("Total Cancels", f"{mtd_cancels:,.0f}", delta=str_d_cancels, delta_color="inverse")
     with mtd_col3:
-        st.metric("EFT Gained", f"${mtd_eft_gain:,.2f}")
+        st.metric("EFT Gained", f"${mtd_eft_gain:,.2f}", delta=str_d_eft_gain)
     with mtd_col4:
-        st.metric("EFT Lost", f"${mtd_eft_lost:,.2f}")
+        st.metric("EFT Lost", f"${mtd_eft_lost:,.2f}", delta=str_d_eft_lost, delta_color="inverse")
     with mtd_col5:
         st.metric("MTD PT Revenue", f"${mtd_pt_rev:,.2f}")
 
-st.write("") # Spacing
+st.write("") 
 
 # 7. Owner Distribution & Decision Guide
 st.markdown("### Owner Distribution & Decision Guide")
@@ -162,7 +206,6 @@ with st.container(border=True):
     is_projected = view_df["Status"].iloc[-1]
     fixed_debt = 8095
 
-    # Baseline Calculations
     cash_after_fixed = current_live_revenue - current_live_opex - fixed_debt
     s_dufresne = 7500
     s_tushman = 5000
@@ -188,7 +231,6 @@ with st.container(border=True):
     wf_col1, wf_col2, wf_col3 = st.columns(3)
 
     with wf_col1:
-        # Hardcoded minimum value to ensure DuFresne never drops below 7500
         safe_dufresne_start = max(float(s_dufresne), 7500.0)
         test_dufresne = st.number_input("DuFresne Draw (Min $7,500)", value=safe_dufresne_start, min_value=7500.0, step=500.0)
     with wf_col2:
@@ -205,7 +247,7 @@ with st.container(border=True):
     else:
         st.info(f"BREAKEVEN: All cash accurately allocated. Remaining balance is $0.00.")
 
-st.write("") # Spacing
+st.write("") 
 
 # 8. Financial Visualizations (Full Width Trend Chart)
 st.markdown("### Financial Visualizations")
@@ -214,18 +256,17 @@ with st.container(border=True):
     st.markdown("**Annual Revenue vs. Expenses Trend**")
     fig_trend = go.Figure()
     
-    # Modern styling: Clean bars for OpEx, sleek line for Revenue
     fig_trend.add_trace(go.Bar(
         x=df["Month"], y=df["Operating Expenses"], 
         name="Operating Expenses", 
-        marker_color="#cbd5e1", # Sleek slate gray
+        marker_color="#cbd5e1", 
         opacity=0.8
     ))
     fig_trend.add_trace(go.Scatter(
         x=df["Month"], y=df["Total Income"], 
         name="Total Revenue", 
         mode='lines+markers',
-        line=dict(color="#0f172a", width=3), # Deep corporate navy
+        line=dict(color="#0f172a", width=3), 
         marker=dict(size=8)
     ))
     
@@ -236,7 +277,6 @@ with st.container(border=True):
         xaxis=dict(showgrid=False),
         yaxis=dict(showgrid=True, gridcolor="#f1f5f9")
     )
-    # Using use_container_width expands this beautifully across the entire dashboard
     st.plotly_chart(fig_trend, use_container_width=True)
 
 st.write("")
