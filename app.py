@@ -25,7 +25,6 @@ def fetch_live_data(url):
     if "Month" in df.columns:
         df["Month"] = df["Month"].astype(str).str.strip()
     
-    # Vertically stacked to prevent copy-paste cutoff
     numeric_cols = [
         "Total Income", 
         "Operating Expenses", 
@@ -71,7 +70,6 @@ except:
     avg_row = pd.DataFrame()
 
 # Generate the 12-Month Projected Budget Engine
-# Vertically stacked to prevent the SyntaxError
 all_months = [
     "Jan", "Feb", "Mar", "Apr", 
     "May", "Jun", "Jul", "Aug", 
@@ -250,7 +248,7 @@ if is_ytd:
     st.markdown("*(Note: The decision guide calculates distributions for a single operational month. Below reflects your most recently completed month.)*")
     guide_df = completed_df
 else:
-    st.markdown("Review and adjust the baseline distribution scenarios based on live operating constraints.")
+    st.markdown("Input a projected total revenue or adjust the distribution scenarios to test outcomes based on live operating constraints.")
     guide_df = view_df
 
 with st.container(border=True):
@@ -266,10 +264,22 @@ with st.container(border=True):
         is_projected = "No Data"
         
     fixed_debt = 8095
+    
+    st.markdown(f"**Scenario Basis: {current_month_name} ({is_projected})**")
 
-    cash_after_fixed = current_live_revenue - current_live_opex - fixed_debt
+    # Editable Revenue Field integrated directly into the layout
+    rev_col, opex_col, debt_col = st.columns(3)
+    with rev_col:
+        test_revenue = st.number_input("Projected Total Revenue", value=float(current_live_revenue), step=1000.0)
+    with opex_col:
+        st.metric("Live Operating Expenses", f"${current_live_opex:,.2f}")
+    with debt_col:
+        st.metric("Fixed Debt Service", f"${fixed_debt:,.2f}")
+
+    # Waterfall logic recalculates dynamically based on the 'test_revenue' input
+    cash_after_fixed = test_revenue - current_live_opex - fixed_debt
     s_dufresne = 7500
-    s_tushman = 5000
+    s_tushman = 0  # Updated to default to 0
     cash_after_base = cash_after_fixed - s_dufresne - s_tushman
 
     s_reserve = 0
@@ -283,11 +293,11 @@ with st.container(border=True):
         cash_after_reserve -= d_extra
         
     if cash_after_reserve > 0:
-        t_extra = min(cash_after_reserve, 5000)
+        t_extra = min(cash_after_reserve, 10000)
         s_tushman += t_extra
         cash_after_reserve -= t_extra
-
-    st.markdown(f"**Scenario Basis: {current_month_name} ({is_projected})** | Revenue: `${current_live_revenue:,.2f}` | OpEx: `${current_live_opex:,.2f}`")
+    
+    st.write("") # Spacing
     
     wf_col1, wf_col2, wf_col3 = st.columns(3)
 
@@ -299,7 +309,8 @@ with st.container(border=True):
     with wf_col3:
         test_reserve = st.number_input("Cash Reserve Added", value=float(s_reserve), step=500.0)
 
-    final_balance = current_live_revenue - current_live_opex - fixed_debt - test_dufresne - test_tushman - test_reserve
+    # Final math executed against the manual revenue input
+    final_balance = test_revenue - current_live_opex - fixed_debt - test_dufresne - test_tushman - test_reserve
 
     if final_balance < 0:
         st.error(f"WARNING: This scenario results in a cash deficit of ${abs(final_balance):,.2f}.")
