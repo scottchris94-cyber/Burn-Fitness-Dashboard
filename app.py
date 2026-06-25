@@ -3,18 +3,18 @@ import pandas as pd
 from datetime import datetime
 
 # 1. Page Configuration
-st.set_page_config(page_title="Burn Fitness Financials", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Burn Fitness Overview", layout="wide", initial_sidebar_state="expanded")
 
 # Custom CSS for an aggressively consolidated, mobile-friendly UI
 st.markdown("""
     <style>
-    /* Reduce top and bottom padding of the main container */
-    .block-container { padding-top: 1rem; padding-bottom: 1rem; }
+    /* Add slightly more top padding so the main header doesn't cut off */
+    .block-container { padding-top: 2rem; padding-bottom: 1rem; }
     
-    /* Tighten header spacing */
-    h1, h2, h3 { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-weight: 600; color: #1e293b; margin-bottom: 0rem !important; padding-bottom: 0rem !important; }
-    h1 { font-size: 1.8rem !important; }
-    h3 { font-size: 1.2rem !important; margin-top: 1rem !important; }
+    /* Fix header overlap by adding a small bottom margin back in */
+    h1, h2, h3 { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-weight: 600; color: #1e293b; }
+    h1 { font-size: 2rem !important; margin-bottom: 0.5rem !important; padding-bottom: 0.5rem !important; }
+    h3 { font-size: 1.25rem !important; margin-top: 1rem !important; margin-bottom: 0.75rem !important; padding-bottom: 0rem !important; }
     
     /* Shrink KPI metric sizes to fit cleanly on mobile */
     div[data-testid="stMetricValue"] { font-size: 1.25rem !important; font-weight: 700 !important; }
@@ -132,7 +132,7 @@ else:
     is_ytd = False
 
 # 4. Main Header
-st.title("Burn Fitness 2, LLC")
+st.title("Burn Fitness Overview")
 
 # --- SECTION 1: MONTHLY PERFORMANCE ---
 if is_ytd:
