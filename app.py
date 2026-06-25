@@ -8,20 +8,16 @@ st.set_page_config(page_title="Burn Fitness Overview", layout="wide", initial_si
 # Custom CSS for an aggressively consolidated, mobile-friendly UI
 st.markdown("""
     <style>
-    /* Add slightly more top padding so the main header doesn't cut off */
     .block-container { padding-top: 2rem; padding-bottom: 1rem; }
     
-    /* Fix header overlap by adding a small bottom margin back in */
     h1, h2, h3 { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-weight: 600; color: #1e293b; }
     h1 { font-size: 2rem !important; margin-bottom: 0.5rem !important; padding-bottom: 0.5rem !important; }
     h3 { font-size: 1.25rem !important; margin-top: 1rem !important; margin-bottom: 0.75rem !important; padding-bottom: 0rem !important; }
     
-    /* Shrink KPI metric sizes to fit cleanly on mobile */
     div[data-testid="stMetricValue"] { font-size: 1.25rem !important; font-weight: 700 !important; }
     div[data-testid="stMetricLabel"] { font-size: 0.8rem !important; color: #64748b !important; margin-bottom: -5px; }
     div[data-testid="stMetricDelta"] { font-size: 0.75rem !important; }
     
-    /* Reduce gap between stacked elements */
     div[data-testid="stVerticalBlock"] { gap: 0.5rem !important; }
     </style>
 """, unsafe_allow_html=True)
@@ -118,15 +114,14 @@ except Exception:
 st.sidebar.title("Dashboard Controls")
 st.sidebar.markdown("Filter data by month for the owner review.")
 
-current_month_abbr = datetime.now().strftime("%b")
-ytd_label = "Completed Year-to-Date (Excludes Active Month)"
+ytd_label = "Year-to-Date (YTD)"
 selected_month = st.sidebar.selectbox("Select Month", [ytd_label] + df["Month"].tolist())
 
-completed_df = df[(df["Status"] == "Actual") & (df["Month"] != current_month_abbr)]
+actuals_df = df[df["Status"] == "Actual"]
 
 if selected_month == ytd_label:
     is_ytd = True
-    view_df = completed_df 
+    view_df = actuals_df 
 else:
     view_df = df[df["Month"] == selected_month]
     is_ytd = False
@@ -136,7 +131,7 @@ st.title("Burn Fitness Overview")
 
 # --- SECTION 1: MONTHLY PERFORMANCE ---
 if is_ytd:
-    st.markdown("### Completed YTD Performance")
+    st.markdown("### YTD Performance")
 else:
     st.markdown("### Monthly Performance")
 
@@ -201,11 +196,9 @@ with st.container(border=True):
             if "Unnamed: 0" in df_trainers.columns:
                 df_trainers = df_trainers.rename(columns={"Unnamed: 0": "Month"})
             
-            # Identify and drop the specific Unnamed columns requested
             cols_to_hide = ["Unnamed: 16", "Unnamed: 17", "Unnamed: 18"]
             df_trainers = df_trainers.drop(columns=[c for c in cols_to_hide if c in df_trainers.columns])
             
-            # Slice strictly up to row 15 (Index 0 through 14)
             df_trainers = df_trainers.head(15)
             df_trainers = df_trainers.dropna(how='all')
             
@@ -220,21 +213,13 @@ with st.container(border=True):
     col1, col2, col3, col4 = st.columns(4)
     
     if is_ytd:
-        current_revenue = completed_df["Total Income"].sum()
-        current_op_income = completed_df["Operating Income"].sum()
-        current_cash = completed_df["Remaining Cash"].sum()
+        current_revenue = actuals_df["Total Income"].sum()
+        current_op_income = actuals_df["Operating Income"].sum()
+        current_cash = actuals_df["Remaining Cash"].sum()
         avg_margin = f"{(current_op_income / current_revenue * 100):.1f}%" if current_revenue > 0 else "0.0%"
         
         margin_label = "Op Margin (YTD)"
         op_label = "Net Op Income"
-    elif selected_month == current_month_abbr:
-        current_revenue = view_df["Total Income"].sum()
-        current_op_income = view_df["Operating Income"].sum()
-        current_cash = view_df["Remaining Cash"].sum()
-        avg_margin = "N/A"
-        
-        margin_label = "Op Margin"
-        op_label = "Net Op Income (Inc)"
     else:
         current_revenue = view_df["Total Income"].sum()
         current_op_income = view_df["Operating Income"].sum()
@@ -252,16 +237,13 @@ with st.container(border=True):
         st.metric("Net Cash Flow", f"${current_cash:,.2f}")
     with col4:
         st.metric(margin_label, avg_margin)
-        
-if not is_ytd and selected_month == current_month_abbr:
-    st.caption("*Net Cash Flow reflects MTD data.")
 
 # --- SECTION 4: OWNER DISTRIBUTION & DECISION GUIDE ---
 st.markdown("### Owner Distribution & Decision Guide")
 
 if is_ytd:
-    st.markdown("*(Note: Distributions are calculated for a single operational month. Below reflects your most recently completed month.)*")
-    guide_df = completed_df
+    st.markdown("*(Note: Distributions are calculated for a single operational month. Below reflects your most recent active month.)*")
+    guide_df = actuals_df
 else:
     guide_df = view_df
 
