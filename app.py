@@ -238,8 +238,8 @@ with st.container(border=True):
     with col4:
         st.metric(margin_label, avg_margin)
 
-# --- SECTION 4: OWNER DISTRIBUTION & DECISION GUIDE (SECURED) ---
-st.markdown("### Owner Distribution & Decision Guide")
+# --- SECTION 4: OWNER ACCESS ONLY (SECURED) ---
+st.markdown("### Owner Access Only")
 
 # The Security Gate
 pin_input = st.text_input("Enter 4-Digit Owner PIN to unlock this section:", type="password")
