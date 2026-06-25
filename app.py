@@ -5,11 +5,24 @@ from datetime import datetime
 # 1. Page Configuration
 st.set_page_config(page_title="Burn Fitness Financials", layout="wide", initial_sidebar_state="expanded")
 
-# Custom CSS for a clean, modern corporate feel
+# Custom CSS for an aggressively consolidated, mobile-friendly UI
 st.markdown("""
     <style>
-    .block-container { padding-top: 2rem; padding-bottom: 2rem; }
-    h1, h2, h3 { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-weight: 600; color: #1e293b; }
+    /* Reduce top and bottom padding of the main container */
+    .block-container { padding-top: 1rem; padding-bottom: 1rem; }
+    
+    /* Tighten header spacing */
+    h1, h2, h3 { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-weight: 600; color: #1e293b; margin-bottom: 0rem !important; padding-bottom: 0rem !important; }
+    h1 { font-size: 1.8rem !important; }
+    h3 { font-size: 1.2rem !important; margin-top: 1rem !important; }
+    
+    /* Shrink KPI metric sizes to fit cleanly on mobile */
+    div[data-testid="stMetricValue"] { font-size: 1.25rem !important; font-weight: 700 !important; }
+    div[data-testid="stMetricLabel"] { font-size: 0.8rem !important; color: #64748b !important; margin-bottom: -5px; }
+    div[data-testid="stMetricDelta"] { font-size: 0.75rem !important; }
+    
+    /* Reduce gap between stacked elements */
+    div[data-testid="stVerticalBlock"] { gap: 0.5rem !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -103,7 +116,7 @@ except Exception:
     pass
 
 st.sidebar.title("Dashboard Controls")
-st.sidebar.markdown("Filter data by month for the owner review. Future months display projected targets.")
+st.sidebar.markdown("Filter data by month for the owner review.")
 
 current_month_abbr = datetime.now().strftime("%b")
 ytd_label = "Completed Year-to-Date (Excludes Active Month)"
@@ -124,10 +137,8 @@ st.title("Burn Fitness 2, LLC")
 # --- SECTION 1: MONTHLY PERFORMANCE ---
 if is_ytd:
     st.markdown("### Completed YTD Performance")
-    st.markdown("Year-to-Date operational totals pulled directly from your Google Sheets feed.")
 else:
     st.markdown("### Monthly Performance")
-    st.markdown("Real-time operational metrics compared to your custom historical average.")
 
 with st.container(border=True):
     def get_val(df_source, col_name, is_ytd_mode):
@@ -166,23 +177,17 @@ with st.container(border=True):
     with col2: st.metric("Cancels", f"{m_can:,.0f}", delta=fmt_delta(calc_delta(m_can, get_avg("Total Cancels"))), delta_color="inverse")
     with col3: st.metric("EFT Gained", f"${m_eft_g:,.2f}", delta=fmt_delta(calc_delta(m_eft_g, get_avg("Total EFT Gained")), True))
     with col4: st.metric("EFT Lost", f"${m_eft_l:,.2f}", delta=fmt_delta(calc_delta(m_eft_l, get_avg("Total EFT Lost")), True), delta_color="inverse")
-    with col5: st.metric("NMS (Joining)", f"${m_nms:,.2f}", delta=fmt_delta(calc_delta(m_nms, get_avg("NMS")), True))
+    with col5: st.metric("NMS", f"${m_nms:,.2f}", delta=fmt_delta(calc_delta(m_nms, get_avg("NMS")), True))
 
-    st.write("")
-    
     col6, col7, col8, col9, col10 = st.columns(5)
     with col6: st.metric("PT Sold", f"${m_pt_sold:,.2f}", delta=fmt_delta(calc_delta(m_pt_sold, get_avg("MTD PT Revenue")), True))
     with col7: st.metric("PT Lost", f"${m_pt_lost:,.2f}", delta=fmt_delta(calc_delta(m_pt_lost, get_avg("PT Revenue Lost")), True), delta_color="inverse")
-    with col8: st.metric("PT Intros Sold", f"{m_pt_intro:,.0f}", delta=fmt_delta(calc_delta(m_pt_intro, get_avg("PT Intros Sold"))))
+    with col8: st.metric("Intros Sold", f"{m_pt_intro:,.0f}", delta=fmt_delta(calc_delta(m_pt_intro, get_avg("PT Intros Sold"))))
     with col9: st.metric("POS Referrals", f"{m_pos:,.0f}", delta=fmt_delta(calc_delta(m_pos, get_avg("POS Referrals"))))
     with col10: st.metric("PFGs", f"{m_pfg:,.0f}", delta=fmt_delta(calc_delta(m_pfg, get_avg("PFGs"))))
 
-    st.write("")
-    
     col11, col12, col13, col14, col15 = st.columns(5)
     with col11: st.metric("Retail Sold", f"${m_retail:,.2f}", delta=fmt_delta(calc_delta(m_retail, get_avg("Retail Sold")), True))
-
-st.write("")
 
 # --- SECTION 2: TRAINER MONTHLY TOTALS ---
 st.markdown("### Trainer Monthly Totals")
@@ -191,23 +196,23 @@ with st.container(border=True):
         if trainer_sheet_url == "PASTE_YOUR_TRAINER_CSV_LINK_HERE":
             st.info("Awaiting Trainer Data. Paste your secondary CSV link into the code to activate this module.")
         else:
-            # header=1 tells Python to ignore row 1 and use row 2 as the column headers
             df_trainers = pd.read_csv(trainer_sheet_url, header=1)
             
-            # If Column A was left blank in row 2, pandas names it "Unnamed: 0". This renames it clearly.
             if "Unnamed: 0" in df_trainers.columns:
                 df_trainers = df_trainers.rename(columns={"Unnamed: 0": "Month"})
             
-            # Drops completely empty rows from the bottom of the sheet
+            # Identify and drop the specific Unnamed columns requested
+            cols_to_hide = ["Unnamed: 16", "Unnamed: 17", "Unnamed: 18"]
+            df_trainers = df_trainers.drop(columns=[c for c in cols_to_hide if c in df_trainers.columns])
+            
+            # Slice strictly up to row 15 (Index 0 through 14)
+            df_trainers = df_trainers.head(15)
             df_trainers = df_trainers.dropna(how='all')
             
-            # Force numerical columns to display nicely
             st.dataframe(df_trainers.fillna(""), use_container_width=True, hide_index=True)
             
     except Exception as e:
         st.warning("Could not load Trainer Data. Please ensure the Google Sheet tab is published as a CSV and the link is correct.")
-
-st.write("")
 
 # --- SECTION 3: FINANCIAL PERFORMANCE ---
 st.markdown("### Financial Performance")
@@ -220,24 +225,24 @@ with st.container(border=True):
         current_cash = completed_df["Remaining Cash"].sum()
         avg_margin = f"{(current_op_income / current_revenue * 100):.1f}%" if current_revenue > 0 else "0.0%"
         
-        margin_label = "Operating Margin (Completed YTD)"
-        op_label = "Net Operating Income"
+        margin_label = "Op Margin (YTD)"
+        op_label = "Net Op Income"
     elif selected_month == current_month_abbr:
         current_revenue = view_df["Total Income"].sum()
         current_op_income = view_df["Operating Income"].sum()
         current_cash = view_df["Remaining Cash"].sum()
-        avg_margin = "N/A (Active Month)"
+        avg_margin = "N/A"
         
-        margin_label = "Operating Profit Margin"
-        op_label = "Net Operating Income (Incomplete)"
+        margin_label = "Op Margin"
+        op_label = "Net Op Income (Inc)"
     else:
         current_revenue = view_df["Total Income"].sum()
         current_op_income = view_df["Operating Income"].sum()
         current_cash = view_df["Remaining Cash"].sum()
         avg_margin = f"{view_df['Profit Margin (%)'].mean():.1f}%" if not view_df.empty else "0.0%"
         
-        margin_label = "Operating Profit Margin"
-        op_label = "Net Operating Income"
+        margin_label = "Op Margin"
+        op_label = "Net Op Income"
 
     with col1:
         st.metric("Total Revenue", f"${current_revenue:,.2f}")
@@ -249,17 +254,15 @@ with st.container(border=True):
         st.metric(margin_label, avg_margin)
         
 if not is_ytd and selected_month == current_month_abbr:
-    st.caption("*Net Cash Flow reflects MTD data and may include non-operating expenses pulled prior to full revenue collection.")
-st.write("") 
+    st.caption("*Net Cash Flow reflects MTD data.")
 
 # --- SECTION 4: OWNER DISTRIBUTION & DECISION GUIDE ---
 st.markdown("### Owner Distribution & Decision Guide")
 
 if is_ytd:
-    st.markdown("*(Note: The decision guide calculates distributions for a single operational month. Below reflects your most recently completed month.)*")
+    st.markdown("*(Note: Distributions are calculated for a single operational month. Below reflects your most recently completed month.)*")
     guide_df = completed_df
 else:
-    st.markdown("Input a projected total revenue or adjust the distribution scenarios to test outcomes based on live operating constraints.")
     guide_df = view_df
 
 with st.container(border=True):
@@ -282,9 +285,9 @@ with st.container(border=True):
     with rev_col:
         test_revenue = st.number_input("Projected Total Revenue", value=float(current_live_revenue), step=1000.0)
     with opex_col:
-        st.metric("Live Operating Expenses", f"${current_live_opex:,.2f}")
+        st.metric("Live OpEx", f"${current_live_opex:,.2f}")
     with debt_col:
-        st.metric("Fixed Debt Service", f"${fixed_debt:,.2f}")
+        st.metric("Fixed Debt", f"${fixed_debt:,.2f}")
 
     cash_after_fixed = test_revenue - current_live_opex - fixed_debt
     s_dufresne = 7500
@@ -306,8 +309,6 @@ with st.container(border=True):
         s_tushman += t_extra
         cash_after_reserve -= t_extra
     
-    st.write("") 
-    
     wf_col1, wf_col2, wf_col3 = st.columns(3)
 
     with wf_col1:
@@ -326,8 +327,6 @@ with st.container(border=True):
         st.success(f"APPROVED: This scenario results in a retained surplus of ${final_balance:,.2f}.")
     else:
         st.info(f"BREAKEVEN: All cash accurately allocated. Remaining balance is $0.00.")
-
-st.write("") 
 
 # 8. Raw Data Table Toggle
 with st.expander("View Raw Financial Data"):
