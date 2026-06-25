@@ -112,7 +112,7 @@ except Exception:
     pass
 
 st.sidebar.title("Dashboard Controls")
-st.sidebar.markdown("Filter data by month for the owner review.")
+st.sidebar.markdown("Filter data by month for the review.")
 
 ytd_label = "Year-to-Date (YTD)"
 selected_month = st.sidebar.selectbox("Select Month", [ytd_label] + df["Month"].tolist())
@@ -238,77 +238,86 @@ with st.container(border=True):
     with col4:
         st.metric(margin_label, avg_margin)
 
-# --- SECTION 4: OWNER DISTRIBUTION & DECISION GUIDE ---
+# --- SECTION 4: OWNER DISTRIBUTION & DECISION GUIDE (SECURED) ---
 st.markdown("### Owner Distribution & Decision Guide")
 
-if is_ytd:
-    st.markdown("*(Note: Distributions are calculated for a single operational month. Below reflects your most recent active month.)*")
-    guide_df = actuals_df
-else:
-    guide_df = view_df
+# The Security Gate
+pin_input = st.text_input("Enter 4-Digit Owner PIN to unlock this section:", type="password")
 
-with st.container(border=True):
-    if not guide_df.empty:
-        current_month_name = guide_df["Month"].iloc[-1]
-        current_live_revenue = guide_df["Total Income"].iloc[-1]
-        current_live_opex = guide_df["Operating Expenses"].iloc[-1]
-        is_projected = guide_df["Status"].iloc[-1]
+# CHANGE "1234" TO YOUR DESIRED PIN BEFORE COMMITTING
+if pin_input == "1234": 
+
+    if is_ytd:
+        st.markdown("*(Note: Distributions are calculated for a single operational month. Below reflects your most recent active month.)*")
+        guide_df = actuals_df
     else:
-        current_month_name = "N/A"
-        current_live_revenue = 0.0
-        current_live_opex = 0.0
-        is_projected = "No Data"
+        guide_df = view_df
+
+    with st.container(border=True):
+        if not guide_df.empty:
+            current_month_name = guide_df["Month"].iloc[-1]
+            current_live_revenue = guide_df["Total Income"].iloc[-1]
+            current_live_opex = guide_df["Operating Expenses"].iloc[-1]
+            is_projected = guide_df["Status"].iloc[-1]
+        else:
+            current_month_name = "N/A"
+            current_live_revenue = 0.0
+            current_live_opex = 0.0
+            is_projected = "No Data"
+            
+        fixed_debt = 8095
         
-    fixed_debt = 8095
-    
-    st.markdown(f"**Scenario Basis: {current_month_name} ({is_projected})**")
+        st.markdown(f"**Scenario Basis: {current_month_name} ({is_projected})**")
 
-    rev_col, opex_col, debt_col = st.columns(3)
-    with rev_col:
-        test_revenue = st.number_input("Projected Total Revenue", value=float(current_live_revenue), step=1000.0)
-    with opex_col:
-        st.metric("Live OpEx", f"${current_live_opex:,.2f}")
-    with debt_col:
-        st.metric("Fixed Debt", f"${fixed_debt:,.2f}")
+        rev_col, opex_col, debt_col = st.columns(3)
+        with rev_col:
+            test_revenue = st.number_input("Projected Total Revenue", value=float(current_live_revenue), step=1000.0)
+        with opex_col:
+            st.metric("Live OpEx", f"${current_live_opex:,.2f}")
+        with debt_col:
+            st.metric("Fixed Debt", f"${fixed_debt:,.2f}")
 
-    cash_after_fixed = test_revenue - current_live_opex - fixed_debt
-    s_dufresne = 7500
-    s_tushman = 0  
-    cash_after_base = cash_after_fixed - s_dufresne - s_tushman
+        cash_after_fixed = test_revenue - current_live_opex - fixed_debt
+        s_dufresne = 7500
+        s_tushman = 0  
+        cash_after_base = cash_after_fixed - s_dufresne - s_tushman
 
-    s_reserve = 0
-    if cash_after_base > 0:
-        s_reserve = min(cash_after_base, 2000)
-    cash_after_reserve = cash_after_base - s_reserve
+        s_reserve = 0
+        if cash_after_base > 0:
+            s_reserve = min(cash_after_base, 2000)
+        cash_after_reserve = cash_after_base - s_reserve
 
-    if cash_after_reserve > 0:
-        d_extra = min(cash_after_reserve, 2500)
-        s_dufresne += d_extra
-        cash_after_reserve -= d_extra
+        if cash_after_reserve > 0:
+            d_extra = min(cash_after_reserve, 2500)
+            s_dufresne += d_extra
+            cash_after_reserve -= d_extra
+            
+        if cash_after_reserve > 0:
+            t_extra = min(cash_after_reserve, 10000)
+            s_tushman += t_extra
+            cash_after_reserve -= t_extra
         
-    if cash_after_reserve > 0:
-        t_extra = min(cash_after_reserve, 10000)
-        s_tushman += t_extra
-        cash_after_reserve -= t_extra
-    
-    wf_col1, wf_col2, wf_col3 = st.columns(3)
+        wf_col1, wf_col2, wf_col3 = st.columns(3)
 
-    with wf_col1:
-        safe_dufresne_start = max(float(s_dufresne), 7500.0)
-        test_dufresne = st.number_input("DuFresne Draw (Min $7,500)", value=safe_dufresne_start, min_value=7500.0, step=500.0)
-    with wf_col2:
-        test_tushman = st.number_input("Tushman Draw", value=float(s_tushman), step=500.0)
-    with wf_col3:
-        test_reserve = st.number_input("Cash Reserve Added", value=float(s_reserve), step=500.0)
+        with wf_col1:
+            safe_dufresne_start = max(float(s_dufresne), 7500.0)
+            test_dufresne = st.number_input("DuFresne Draw (Min $7,500)", value=safe_dufresne_start, min_value=7500.0, step=500.0)
+        with wf_col2:
+            test_tushman = st.number_input("Tushman Draw", value=float(s_tushman), step=500.0)
+        with wf_col3:
+            test_reserve = st.number_input("Cash Reserve Added", value=float(s_reserve), step=500.0)
 
-    final_balance = test_revenue - current_live_opex - fixed_debt - test_dufresne - test_tushman - test_reserve
+        final_balance = test_revenue - current_live_opex - fixed_debt - test_dufresne - test_tushman - test_reserve
 
-    if final_balance < 0:
-        st.error(f"WARNING: This scenario results in a cash deficit of ${abs(final_balance):,.2f}.")
-    elif final_balance > 0:
-        st.success(f"APPROVED: This scenario results in a retained surplus of ${final_balance:,.2f}.")
-    else:
-        st.info(f"BREAKEVEN: All cash accurately allocated. Remaining balance is $0.00.")
+        if final_balance < 0:
+            st.error(f"WARNING: This scenario results in a cash deficit of ${abs(final_balance):,.2f}.")
+        elif final_balance > 0:
+            st.success(f"APPROVED: This scenario results in a retained surplus of ${final_balance:,.2f}.")
+        else:
+            st.info(f"BREAKEVEN: All cash accurately allocated. Remaining balance is $0.00.")
+
+elif pin_input != "":
+    st.error("Incorrect PIN. Access Denied.")
 
 # 8. Raw Data Table Toggle
 with st.expander("View Raw Financial Data"):
