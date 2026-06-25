@@ -14,8 +14,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # 2. Load Live Data & Generate Projections
-# MAKE SURE your actual published CSV link is between the quotes below
+# MAKE SURE your actual published CSV links are between the quotes below
 sheet_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRHzA-fwBnL6URgQpHeM6ezWfk46qhlKwVgtBXm9vqJkRjOS9rXhngAE1VCbjyxhQ/pub?gid=237304684&single=true&output=csv"
+trainer_sheet_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQBh5tuhKZXYy3U-6jgWIVc6_V8TLOK0C-o4HDDeX8b7m1S_HBfngL-8Dttrdkycg/pub?gid=1523309006&single=true&output=csv"
 
 @st.cache_data(ttl=60)
 def fetch_live_data(url):
@@ -26,18 +27,10 @@ def fetch_live_data(url):
         df["Month"] = df["Month"].astype(str).str.strip()
     
     numeric_cols = [
-        "Total Income", 
-        "Operating Expenses", 
-        "Non-Operating Expenses", 
-        "Remaining Cash", 
-        "PT Revenue", 
-        "Membership Dues", 
-        "Total Payroll",
-        "Total Memberships", 
-        "Total Cancels", 
-        "Total EFT Gained", 
-        "Total EFT Lost", 
-        "MTD PT Revenue"
+        "Total Income", "Operating Expenses", "Non-Operating Expenses", "Remaining Cash", 
+        "PT Revenue", "Membership Dues", "Total Payroll", "Total Memberships", 
+        "Total Cancels", "Total EFT Gained", "Total EFT Lost", "MTD PT Revenue",
+        "NMS", "PT Revenue Lost", "PT Intros Sold", "POS Referrals", "PFGs", "Retail Sold"
     ]
     
     for col in numeric_cols:
@@ -69,13 +62,7 @@ except:
     ytd_row = pd.DataFrame()
     avg_row = pd.DataFrame()
 
-# Generate the 12-Month Projected Budget Engine
-all_months = [
-    "Jan", "Feb", "Mar", "Apr", 
-    "May", "Jun", "Jul", "Aug", 
-    "Sep", "Oct", "Nov", "Dec"
-]
-
+all_months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 proj_data = []
 
 for m in all_months:
@@ -85,20 +72,12 @@ for m in all_months:
     pt_revenue = target_revenue - mem_dues - misc_income
     
     proj_data.append({
-        "Month": m,
-        "Total Income": target_revenue,
-        "Operating Expenses": 97450,
-        "Non-Operating Expenses": 8095, 
-        "Remaining Cash": 0,
-        "PT Revenue": pt_revenue,
-        "Membership Dues": mem_dues,
-        "Total Payroll": 0, 
-        "Total Memberships": 0,
-        "Total Cancels": 0,
-        "Total EFT Gained": 0,
-        "Total EFT Lost": 0,
-        "MTD PT Revenue": 0,
-        "Status": "Projected"
+        "Month": m, "Total Income": target_revenue, "Operating Expenses": 97450,
+        "Non-Operating Expenses": 8095, "Remaining Cash": 0, "PT Revenue": pt_revenue,
+        "Membership Dues": mem_dues, "Total Payroll": 0, "Total Memberships": 0,
+        "Total Cancels": 0, "Total EFT Gained": 0, "Total EFT Lost": 0, "MTD PT Revenue": 0,
+        "NMS": 0, "PT Revenue Lost": 0, "PT Intros Sold": 0, "POS Referrals": 0, 
+        "PFGs": 0, "Retail Sold": 0, "Status": "Projected"
     })
 
 df_proj = pd.DataFrame(proj_data)
@@ -128,7 +107,6 @@ st.sidebar.markdown("Filter data by month for the owner review. Future months di
 
 current_month_abbr = datetime.now().strftime("%b")
 ytd_label = "Completed Year-to-Date (Excludes Active Month)"
-
 selected_month = st.sidebar.selectbox("Select Month", [ytd_label] + df["Month"].tolist())
 
 completed_df = df[(df["Status"] == "Actual") & (df["Month"] != current_month_abbr)]
@@ -143,19 +121,107 @@ else:
 # 4. Main Header
 st.title("Burn Fitness 2, LLC")
 
-# 5. Top KPI Row (Executive Financial Overview)
-st.markdown("### Executive Financial Overview")
+# --- SECTION 1: MONTHLY PERFORMANCE ---
+if is_ytd:
+    st.markdown("### Completed YTD Performance")
+    st.markdown("Year-to-Date operational totals pulled directly from your Google Sheets feed.")
+else:
+    st.markdown("### Monthly Performance")
+    st.markdown("Real-time operational metrics compared to your custom historical average.")
+
+with st.container(border=True):
+    def get_val(df_source, col_name, is_ytd_mode):
+        if is_ytd_mode:
+            return ytd_row[col_name].values[0] if not ytd_row.empty and col_name in ytd_row.columns else 0
+        else:
+            return df_source[col_name].iloc[-1] if not df_source.empty and col_name in df_source.columns else 0
+
+    def get_avg(col_name):
+        return avg_row[col_name].values[0] if not avg_row.empty and col_name in avg_row.columns else 0
+
+    def calc_delta(val, avg):
+        return val - avg if not is_ytd else None
+
+    def fmt_delta(d_val, is_currency=False):
+        if d_val is None: return None
+        prefix = "+$" if is_currency and d_val >= 0 else "-$" if is_currency else "+" if d_val >= 0 else ""
+        return f"{prefix}{abs(d_val):,.2f} vs avg" if is_currency else f"{prefix}{d_val:,.0f} vs avg"
+
+    m_mem = get_val(view_df, "Total Memberships", is_ytd)
+    m_can = get_val(view_df, "Total Cancels", is_ytd)
+    m_eft_g = get_val(view_df, "Total EFT Gained", is_ytd)
+    m_eft_l = get_val(view_df, "Total EFT Lost", is_ytd)
+    m_nms = get_val(view_df, "NMS", is_ytd)
+    
+    m_pt_sold = get_val(view_df, "MTD PT Revenue", is_ytd)
+    m_pt_lost = get_val(view_df, "PT Revenue Lost", is_ytd)
+    m_pt_intro = get_val(view_df, "PT Intros Sold", is_ytd)
+    m_pos = get_val(view_df, "POS Referrals", is_ytd)
+    m_pfg = get_val(view_df, "PFGs", is_ytd)
+    
+    m_retail = get_val(view_df, "Retail Sold", is_ytd)
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+    with col1: st.metric("Memberships", f"{m_mem:,.0f}", delta=fmt_delta(calc_delta(m_mem, get_avg("Total Memberships"))))
+    with col2: st.metric("Cancels", f"{m_can:,.0f}", delta=fmt_delta(calc_delta(m_can, get_avg("Total Cancels"))), delta_color="inverse")
+    with col3: st.metric("EFT Gained", f"${m_eft_g:,.2f}", delta=fmt_delta(calc_delta(m_eft_g, get_avg("Total EFT Gained")), True))
+    with col4: st.metric("EFT Lost", f"${m_eft_l:,.2f}", delta=fmt_delta(calc_delta(m_eft_l, get_avg("Total EFT Lost")), True), delta_color="inverse")
+    with col5: st.metric("NMS (Joining)", f"${m_nms:,.2f}", delta=fmt_delta(calc_delta(m_nms, get_avg("NMS")), True))
+
+    st.write("")
+    
+    col6, col7, col8, col9, col10 = st.columns(5)
+    with col6: st.metric("PT Sold", f"${m_pt_sold:,.2f}", delta=fmt_delta(calc_delta(m_pt_sold, get_avg("MTD PT Revenue")), True))
+    with col7: st.metric("PT Lost", f"${m_pt_lost:,.2f}", delta=fmt_delta(calc_delta(m_pt_lost, get_avg("PT Revenue Lost")), True), delta_color="inverse")
+    with col8: st.metric("PT Intros Sold", f"{m_pt_intro:,.0f}", delta=fmt_delta(calc_delta(m_pt_intro, get_avg("PT Intros Sold"))))
+    with col9: st.metric("POS Referrals", f"{m_pos:,.0f}", delta=fmt_delta(calc_delta(m_pos, get_avg("POS Referrals"))))
+    with col10: st.metric("PFGs", f"{m_pfg:,.0f}", delta=fmt_delta(calc_delta(m_pfg, get_avg("PFGs"))))
+
+    st.write("")
+    
+    col11, col12, col13, col14, col15 = st.columns(5)
+    with col11: st.metric("Retail Sold", f"${m_retail:,.2f}", delta=fmt_delta(calc_delta(m_retail, get_avg("Retail Sold")), True))
+
+st.write("")
+
+# --- SECTION 2: TRAINER MONTHLY TOTALS ---
+st.markdown("### Trainer Monthly Totals")
+with st.container(border=True):
+    try:
+        if trainer_sheet_url == "PASTE_YOUR_TRAINER_CSV_LINK_HERE":
+            st.info("Awaiting Trainer Data. Paste your secondary CSV link into the code to activate this module.")
+        else:
+            # header=1 tells Python to ignore row 1 and use row 2 as the column headers
+            df_trainers = pd.read_csv(trainer_sheet_url, header=1)
+            
+            # If Column A was left blank in row 2, pandas names it "Unnamed: 0". This renames it clearly.
+            if "Unnamed: 0" in df_trainers.columns:
+                df_trainers = df_trainers.rename(columns={"Unnamed: 0": "Month"})
+            
+            # Drops completely empty rows from the bottom of the sheet
+            df_trainers = df_trainers.dropna(how='all')
+            
+            # Force numerical columns to display nicely
+            st.dataframe(df_trainers.fillna(""), use_container_width=True, hide_index=True)
+            
+    except Exception as e:
+        st.warning("Could not load Trainer Data. Please ensure the Google Sheet tab is published as a CSV and the link is correct.")
+
+st.write("")
+
+# --- SECTION 3: FINANCIAL PERFORMANCE ---
+st.markdown("### Financial Performance")
 with st.container(border=True):
     col1, col2, col3, col4 = st.columns(4)
     
     if is_ytd:
-        current_revenue = ytd_row["Total Income"].values[0] if not ytd_row.empty else 0
-        current_op_income = ytd_row["Operating Income"].values[0] if not ytd_row.empty else 0
-        current_cash = ytd_row["Remaining Cash"].values[0] if not ytd_row.empty else 0
-        avg_margin = f"{ytd_row['Profit Margin (%)'].values[0]:.1f}%" if not ytd_row.empty else "0.0%"
+        current_revenue = completed_df["Total Income"].sum()
+        current_op_income = completed_df["Operating Income"].sum()
+        current_cash = completed_df["Remaining Cash"].sum()
+        avg_margin = f"{(current_op_income / current_revenue * 100):.1f}%" if current_revenue > 0 else "0.0%"
         
         margin_label = "Operating Margin (Completed YTD)"
-        op_label = "Operating Income"
+        op_label = "Net Operating Income"
     elif selected_month == current_month_abbr:
         current_revenue = view_df["Total Income"].sum()
         current_op_income = view_df["Operating Income"].sum()
@@ -163,7 +229,7 @@ with st.container(border=True):
         avg_margin = "N/A (Active Month)"
         
         margin_label = "Operating Profit Margin"
-        op_label = "Operating Income (Incomplete)"
+        op_label = "Net Operating Income (Incomplete)"
     else:
         current_revenue = view_df["Total Income"].sum()
         current_op_income = view_df["Operating Income"].sum()
@@ -171,10 +237,10 @@ with st.container(border=True):
         avg_margin = f"{view_df['Profit Margin (%)'].mean():.1f}%" if not view_df.empty else "0.0%"
         
         margin_label = "Operating Profit Margin"
-        op_label = "Operating Income"
+        op_label = "Net Operating Income"
 
     with col1:
-        st.metric("Total Income", f"${current_revenue:,.2f}")
+        st.metric("Total Revenue", f"${current_revenue:,.2f}")
     with col2:
         st.metric(op_label, f"${current_op_income:,.2f}")
     with col3:
@@ -186,62 +252,7 @@ if not is_ytd and selected_month == current_month_abbr:
     st.caption("*Net Cash Flow reflects MTD data and may include non-operating expenses pulled prior to full revenue collection.")
 st.write("") 
 
-# 6. Performance Snapshot
-if is_ytd:
-    st.markdown("### Completed YTD Performance Snapshot")
-    st.markdown("Year-to-Date operational totals pulled directly from your Google Sheets feed.")
-else:
-    st.markdown("### Month-to-Date (MTD) Performance Snapshot")
-    st.markdown("Real-time operational metrics compared to your custom historical average.")
-
-with st.container(border=True):
-    mtd_col1, mtd_col2, mtd_col3, mtd_col4, mtd_col5 = st.columns(5)
-    
-    if is_ytd:
-        mtd_members = ytd_row["Total Memberships"].values[0] if not ytd_row.empty else 0
-        mtd_cancels = ytd_row["Total Cancels"].values[0] if not ytd_row.empty else 0
-        mtd_eft_gain = ytd_row["Total EFT Gained"].values[0] if not ytd_row.empty else 0
-        mtd_eft_lost = ytd_row["Total EFT Lost"].values[0] if not ytd_row.empty else 0
-        mtd_pt_rev = ytd_row["MTD PT Revenue"].values[0] if not ytd_row.empty else 0
-        
-        str_d_members, str_d_cancels, str_d_eft_gain, str_d_eft_lost = None, None, None, None
-        
-    else:
-        avg_members = avg_row["Total Memberships"].values[0] if not avg_row.empty else 0
-        avg_cancels = avg_row["Total Cancels"].values[0] if not avg_row.empty else 0
-        avg_eft_gain = avg_row["Total EFT Gained"].values[0] if not avg_row.empty else 0
-        avg_eft_lost = avg_row["Total EFT Lost"].values[0] if not avg_row.empty else 0
-
-        mtd_members = view_df["Total Memberships"].iloc[-1] if not view_df.empty and "Total Memberships" in view_df.columns else 0
-        mtd_cancels = view_df["Total Cancels"].iloc[-1] if not view_df.empty and "Total Cancels" in view_df.columns else 0
-        mtd_eft_gain = view_df["Total EFT Gained"].iloc[-1] if not view_df.empty and "Total EFT Gained" in view_df.columns else 0
-        mtd_eft_lost = view_df["Total EFT Lost"].iloc[-1] if not view_df.empty and "Total EFT Lost" in view_df.columns else 0
-        mtd_pt_rev = view_df["MTD PT Revenue"].iloc[-1] if not view_df.empty and "MTD PT Revenue" in view_df.columns else 0
-
-        d_members = mtd_members - avg_members
-        d_cancels = mtd_cancels - avg_cancels
-        d_eft_gain = mtd_eft_gain - avg_eft_gain
-        d_eft_lost = mtd_eft_lost - avg_eft_lost
-
-        str_d_members = f"{'+' if d_members >= 0 else ''}{d_members:,.0f} vs avg"
-        str_d_cancels = f"{'+' if d_cancels >= 0 else ''}{d_cancels:,.0f} vs avg"
-        str_d_eft_gain = f"{'+$' if d_eft_gain >= 0 else '-$'}{abs(d_eft_gain):,.2f} vs avg"
-        str_d_eft_lost = f"{'+$' if d_eft_lost >= 0 else '-$'}{abs(d_eft_lost):,.2f} vs avg"
-
-    with mtd_col1:
-        st.metric("Total Memberships", f"{mtd_members:,.0f}", delta=str_d_members)
-    with mtd_col2:
-        st.metric("Total Cancels", f"{mtd_cancels:,.0f}", delta=str_d_cancels, delta_color="inverse")
-    with mtd_col3:
-        st.metric("EFT Gained", f"${mtd_eft_gain:,.2f}", delta=str_d_eft_gain)
-    with mtd_col4:
-        st.metric("EFT Lost", f"${mtd_eft_lost:,.2f}", delta=str_d_eft_lost, delta_color="inverse")
-    with mtd_col5:
-        st.metric("PT Revenue (New/Renewals)", f"${mtd_pt_rev:,.2f}")
-
-st.write("") 
-
-# 7. Owner Distribution & Decision Guide
+# --- SECTION 4: OWNER DISTRIBUTION & DECISION GUIDE ---
 st.markdown("### Owner Distribution & Decision Guide")
 
 if is_ytd:
@@ -321,15 +332,10 @@ st.write("")
 # 8. Raw Data Table Toggle
 with st.expander("View Raw Financial Data"):
     st.dataframe(df.style.format({
-        "Total Income": "${:,.2f}",
-        "Operating Expenses": "${:,.2f}",
-        "Non-Operating Expenses": "${:,.2f}",
-        "PT Revenue": "${:,.2f}",
-        "Membership Dues": "${:,.2f}",
-        "Remaining Cash": "${:,.2f}",
-        "Total Memberships": "{:,.0f}",
-        "Total Cancels": "{:,.0f}",
-        "Total EFT Gained": "${:,.2f}",
-        "Total EFT Lost": "${:,.2f}",
-        "MTD PT Revenue": "${:,.2f}"
+        "Total Income": "${:,.2f}", "Operating Expenses": "${:,.2f}", "Non-Operating Expenses": "${:,.2f}",
+        "PT Revenue": "${:,.2f}", "Membership Dues": "${:,.2f}", "Remaining Cash": "${:,.2f}",
+        "Total Memberships": "{:,.0f}", "Total Cancels": "{:,.0f}", "Total EFT Gained": "${:,.2f}",
+        "Total EFT Lost": "${:,.2f}", "MTD PT Revenue": "${:,.2f}", "NMS": "${:,.2f}", 
+        "PT Revenue Lost": "${:,.2f}", "PT Intros Sold": "{:,.0f}", "POS Referrals": "{:,.0f}",
+        "PFGs": "{:,.0f}", "Retail Sold": "${:,.2f}"
     }), use_container_width=True)
