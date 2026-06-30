@@ -129,7 +129,68 @@ else:
 # 4. Main Header
 st.title("Burn Fitness Overview")
 
-# --- SECTION 1: MONTHLY PERFORMANCE ---
+# --- SECTION 1: FINANCIAL PERFORMANCE ---
+st.markdown("### Financial Performance")
+with st.container(border=True):
+    col1, col2, col3, col4, col5 = st.columns(5)
+    
+    if is_ytd:
+        current_revenue = actuals_df["Total Income"].sum()
+        current_op_income = actuals_df["Operating Income"].sum()
+        current_cash = actuals_df["Remaining Cash"].sum()
+        avg_margin = f"{(current_op_income / current_revenue * 100):.1f}%" if current_revenue > 0 else "0.0%"
+        
+        margin_label = "Op Margin (YTD)"
+        op_label = "Net Op Income"
+        
+        # ARPM YTD Logic: Calculate average monthly revenue, divide by latest member count
+        months_count = len(actuals_df) if not actuals_df.empty else 1
+        avg_monthly_rev = current_revenue / months_count
+        current_memberships = ytd_row["Total Memberships"].values[0] if not ytd_row.empty and "Total Memberships" in ytd_row.columns else 0
+        current_arpm = avg_monthly_rev / current_memberships if current_memberships > 0 else 0
+        
+    else:
+        current_revenue = view_df["Total Income"].sum()
+        current_op_income = view_df["Operating Income"].sum()
+        current_cash = view_df["Remaining Cash"].sum()
+        
+        if selected_month == datetime.now().strftime("%b"):
+            avg_margin = "N/A"
+            margin_label = "Op Margin"
+            op_label = "Net Op Income (Inc)"
+        else:
+            avg_margin = f"{view_df['Profit Margin (%)'].mean():.1f}%" if not view_df.empty else "0.0%"
+            margin_label = "Op Margin"
+            op_label = "Net Op Income"
+            
+        # ARPM Single Month Logic
+        current_memberships = view_df["Total Memberships"].iloc[-1] if not view_df.empty and "Total Memberships" in view_df.columns else 0
+        current_arpm = current_revenue / current_memberships if current_memberships > 0 else 0
+
+    # ARPM Baseline / Delta Logic
+    avg_rev = avg_row["Total Income"].values[0] if not avg_row.empty and "Total Income" in avg_row.columns else 0
+    avg_mem = avg_row["Total Memberships"].values[0] if not avg_row.empty and "Total Memberships" in avg_row.columns else 0
+    avg_arpm = avg_rev / avg_mem if avg_mem > 0 else 0
+    
+    arpm_delta = current_arpm - avg_arpm if not is_ytd else None
+    
+    def fmt_arpm_delta(d_val):
+        if d_val is None: return None
+        prefix = "+$" if d_val >= 0 else "-$"
+        return f"{prefix}{abs(d_val):,.2f} vs avg"
+
+    with col1:
+        st.metric("Total Revenue", f"${current_revenue:,.2f}")
+    with col2:
+        st.metric(op_label, f"${current_op_income:,.2f}")
+    with col3:
+        st.metric("Net Cash Flow", f"${current_cash:,.2f}")
+    with col4:
+        st.metric(margin_label, avg_margin)
+    with col5:
+        st.metric("ARPM", f"${current_arpm:,.2f}", delta=fmt_arpm_delta(arpm_delta))
+
+# --- SECTION 2: MONTHLY PERFORMANCE ---
 if is_ytd:
     st.markdown("### YTD Performance")
 else:
@@ -184,7 +245,7 @@ with st.container(border=True):
     col11, col12, col13, col14, col15 = st.columns(5)
     with col11: st.metric("Retail Sold", f"${m_retail:,.2f}", delta=fmt_delta(calc_delta(m_retail, get_avg("Retail Sold")), True))
 
-# --- SECTION 2: TRAINER MONTHLY TOTALS ---
+# --- SECTION 3: TRAINER MONTHLY TOTALS ---
 st.markdown("### Trainer Monthly Totals")
 with st.container(border=True):
     try:
@@ -207,36 +268,6 @@ with st.container(border=True):
     except Exception as e:
         st.warning("Could not load Trainer Data. Please ensure the Google Sheet tab is published as a CSV and the link is correct.")
 
-# --- SECTION 3: FINANCIAL PERFORMANCE ---
-st.markdown("### Financial Performance")
-with st.container(border=True):
-    col1, col2, col3, col4 = st.columns(4)
-    
-    if is_ytd:
-        current_revenue = actuals_df["Total Income"].sum()
-        current_op_income = actuals_df["Operating Income"].sum()
-        current_cash = actuals_df["Remaining Cash"].sum()
-        avg_margin = f"{(current_op_income / current_revenue * 100):.1f}%" if current_revenue > 0 else "0.0%"
-        
-        margin_label = "Op Margin (YTD)"
-        op_label = "Net Op Income"
-    else:
-        current_revenue = view_df["Total Income"].sum()
-        current_op_income = view_df["Operating Income"].sum()
-        current_cash = view_df["Remaining Cash"].sum()
-        avg_margin = f"{view_df['Profit Margin (%)'].mean():.1f}%" if not view_df.empty else "0.0%"
-        
-        margin_label = "Op Margin"
-        op_label = "Net Op Income"
-
-    with col1:
-        st.metric("Total Revenue", f"${current_revenue:,.2f}")
-    with col2:
-        st.metric(op_label, f"${current_op_income:,.2f}")
-    with col3:
-        st.metric("Net Cash Flow", f"${current_cash:,.2f}")
-    with col4:
-        st.metric(margin_label, avg_margin)
 
 # --- SECTION 4: OWNER ACCESS ONLY (SECURED) ---
 st.markdown("### Owner Access Only")
@@ -248,7 +279,6 @@ pin_input = st.text_input("Enter 4-Digit Owner PIN to unlock this section:", typ
 if pin_input == "1234": 
 
     if is_ytd:
-        st.markdown("*(Note: Distributions are calculated for a single operational month. Below reflects your most recent active month.)*")
         guide_df = actuals_df
     else:
         guide_df = view_df
@@ -267,7 +297,7 @@ if pin_input == "1234":
             
         fixed_debt = 8095
         
-        st.markdown(f"**Scenario Basis: {current_month_name} ({is_projected})**")
+        st.markdown(f"**Distribution Scenario Basis: {current_month_name} ({is_projected})**")
 
         rev_col, opex_col, debt_col = st.columns(3)
         with rev_col:
@@ -315,6 +345,32 @@ if pin_input == "1234":
             st.success(f"APPROVED: This scenario results in a retained surplus of ${final_balance:,.2f}.")
         else:
             st.info(f"BREAKEVEN: All cash accurately allocated. Remaining balance is $0.00.")
+
+        st.markdown("---")
+        
+        # --- CASH RUNWAY CALCULATOR ---
+        st.markdown("**Cumulative Cash Runway**")
+        st.caption("Input your total banked cash to instantly calculate your operational runway against live OpEx.")
+        
+        runway_col1, runway_col2 = st.columns(2)
+        
+        # Default starting value points to YTD Net Cash Flow, providing a smart baseline
+        default_bank_cash = max(float(actuals_df["Remaining Cash"].sum()), 0.0)
+        
+        with runway_col1:
+            total_banked_cash = st.number_input("Total Banked Cash Balance", value=default_bank_cash, step=1000.0)
+            
+        runway_months = total_banked_cash / current_live_opex if current_live_opex > 0 else 0
+        
+        with runway_col2:
+            st.metric("Months of OpEx Funded", f"{runway_months:.1f} Months")
+            
+        if runway_months < 1.0:
+            st.error("Caution: Less than 1 month of operating expenses held in reserve.")
+        elif runway_months < 2.0:
+            st.warning("Stable: Between 1 to 2 months of operating expenses held in reserve.")
+        else:
+            st.success("Healthy: Over 2 months of operating expenses fully funded in reserve.")
 
 elif pin_input != "":
     st.error("Incorrect PIN. Access Denied.")
