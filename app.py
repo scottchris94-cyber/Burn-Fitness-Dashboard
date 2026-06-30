@@ -117,6 +117,11 @@ st.sidebar.markdown("Filter data by month for the review.")
 ytd_label = "Year-to-Date (YTD)"
 selected_month = st.sidebar.selectbox("Select Month", [ytd_label] + df["Month"].tolist())
 
+st.sidebar.markdown("---")
+st.sidebar.markdown("### Facility Metrics")
+# Dynamic ARPM variable tied directly to the UI
+active_members = st.sidebar.number_input("Total Active Members (for ARPM)", value=1400, step=10)
+
 actuals_df = df[df["Status"] == "Actual"]
 
 if selected_month == ytd_label:
@@ -143,11 +148,10 @@ with st.container(border=True):
         margin_label = "Op Margin (YTD)"
         op_label = "Net Op Income"
         
-        # ARPM YTD Logic: Calculate average monthly revenue, divide by latest member count
+        # ARPM YTD Logic: Calculate average monthly revenue, divide by live active member input
         months_count = len(actuals_df) if not actuals_df.empty else 1
         avg_monthly_rev = current_revenue / months_count
-        current_memberships = ytd_row["Total Memberships"].values[0] if not ytd_row.empty and "Total Memberships" in ytd_row.columns else 0
-        current_arpm = avg_monthly_rev / current_memberships if current_memberships > 0 else 0
+        current_arpm = avg_monthly_rev / active_members if active_members > 0 else 0
         
     else:
         current_revenue = view_df["Total Income"].sum()
@@ -164,13 +168,11 @@ with st.container(border=True):
             op_label = "Net Op Income"
             
         # ARPM Single Month Logic
-        current_memberships = view_df["Total Memberships"].iloc[-1] if not view_df.empty and "Total Memberships" in view_df.columns else 0
-        current_arpm = current_revenue / current_memberships if current_memberships > 0 else 0
+        current_arpm = current_revenue / active_members if active_members > 0 else 0
 
     # ARPM Baseline / Delta Logic
     avg_rev = avg_row["Total Income"].values[0] if not avg_row.empty and "Total Income" in avg_row.columns else 0
-    avg_mem = avg_row["Total Memberships"].values[0] if not avg_row.empty and "Total Memberships" in avg_row.columns else 0
-    avg_arpm = avg_rev / avg_mem if avg_mem > 0 else 0
+    avg_arpm = avg_rev / active_members if active_members > 0 else 0
     
     arpm_delta = current_arpm - avg_arpm if not is_ytd else None
     
@@ -229,7 +231,7 @@ with st.container(border=True):
     m_retail = get_val(view_df, "Retail Sold", is_ytd)
 
     col1, col2, col3, col4, col5 = st.columns(5)
-    with col1: st.metric("Memberships", f"{m_mem:,.0f}", delta=fmt_delta(calc_delta(m_mem, get_avg("Total Memberships"))))
+    with col1: st.metric("New Memberships", f"{m_mem:,.0f}", delta=fmt_delta(calc_delta(m_mem, get_avg("Total Memberships"))))
     with col2: st.metric("Cancels", f"{m_can:,.0f}", delta=fmt_delta(calc_delta(m_can, get_avg("Total Cancels"))), delta_color="inverse")
     with col3: st.metric("EFT Gained", f"${m_eft_g:,.2f}", delta=fmt_delta(calc_delta(m_eft_g, get_avg("Total EFT Gained")), True))
     with col4: st.metric("EFT Lost", f"${m_eft_l:,.2f}", delta=fmt_delta(calc_delta(m_eft_l, get_avg("Total EFT Lost")), True), delta_color="inverse")
@@ -354,7 +356,6 @@ if pin_input == "1234":
         
         runway_col1, runway_col2 = st.columns(2)
         
-        # Default starting value points to YTD Net Cash Flow, providing a smart baseline
         default_bank_cash = max(float(actuals_df["Remaining Cash"].sum()), 0.0)
         
         with runway_col1:
