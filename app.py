@@ -119,7 +119,6 @@ selected_month = st.sidebar.selectbox("Select Month", [ytd_label] + df["Month"].
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### Facility Metrics")
-# Dynamic ARPM variable tied directly to the UI
 active_members = st.sidebar.number_input("Total Active Members (for ARPM)", value=1400, step=10)
 
 actuals_df = df[df["Status"] == "Actual"]
@@ -131,32 +130,55 @@ else:
     view_df = df[df["Month"] == selected_month]
     is_ytd = False
 
+# Helper functions for pulling and formatting metrics cleanly
+def get_val(df_source, col_name, is_ytd_mode):
+    if is_ytd_mode:
+        return ytd_row[col_name].values[0] if not ytd_row.empty and col_name in ytd_row.columns else 0
+    else:
+        return df_source[col_name].iloc[-1] if not df_source.empty and col_name in df_source.columns else 0
+
+def get_avg(col_name):
+    return avg_row[col_name].values[0] if not avg_row.empty and col_name in avg_row.columns else 0
+
+def calc_delta(val, avg):
+    return val - avg if not is_ytd else None
+
+def fmt_delta(d_val, is_currency=False):
+    if d_val is None: return None
+    prefix = "+$" if is_currency and d_val >= 0 else "-$" if is_currency else "+" if d_val >= 0 else ""
+    return f"{prefix}{abs(d_val):,.2f} vs avg" if is_currency else f"{prefix}{d_val:,.0f} vs avg"
+
 # 4. Main Header
 st.title("Burn Fitness Overview")
 
 # --- SECTION 1: FINANCIAL PERFORMANCE ---
 st.markdown("### Financial Performance")
 with st.container(border=True):
-    col1, col2, col3, col4, col5 = st.columns(5)
     
     if is_ytd:
-        current_revenue = actuals_df["Total Income"].sum()
-        current_op_income = actuals_df["Operating Income"].sum()
-        current_cash = actuals_df["Remaining Cash"].sum()
-        avg_margin = f"{(current_op_income / current_revenue * 100):.1f}%" if current_revenue > 0 else "0.0%"
+        f_rev = actuals_df["Total Income"].sum()
+        f_opex = actuals_df["Operating Expenses"].sum()
+        f_non_opex = actuals_df["Non-Operating Expenses"].sum()
+        f_op_inc = actuals_df["Operating Income"].sum()
+        f_cash = actuals_df["Remaining Cash"].sum()
         
+        avg_margin = f"{(f_op_inc / f_rev * 100):.1f}%" if f_rev > 0 else "0.0%"
         margin_label = "Op Margin (YTD)"
         op_label = "Net Op Income"
         
-        # ARPM YTD Logic: Calculate average monthly revenue, divide by live active member input
+        # ARPM YTD Logic
         months_count = len(actuals_df) if not actuals_df.empty else 1
-        avg_monthly_rev = current_revenue / months_count
+        avg_monthly_rev = f_rev / months_count
         current_arpm = avg_monthly_rev / active_members if active_members > 0 else 0
         
+        d_rev, d_opex, d_non_opex, d_op_inc, d_cash = None, None, None, None, None
+        
     else:
-        current_revenue = view_df["Total Income"].sum()
-        current_op_income = view_df["Operating Income"].sum()
-        current_cash = view_df["Remaining Cash"].sum()
+        f_rev = view_df["Total Income"].sum()
+        f_opex = view_df["Operating Expenses"].sum()
+        f_non_opex = view_df["Non-Operating Expenses"].sum()
+        f_op_inc = view_df["Operating Income"].sum()
+        f_cash = view_df["Remaining Cash"].sum()
         
         if selected_month == datetime.now().strftime("%b"):
             avg_margin = "N/A"
@@ -167,30 +189,34 @@ with st.container(border=True):
             margin_label = "Op Margin"
             op_label = "Net Op Income"
             
-        # ARPM Single Month Logic
-        current_arpm = current_revenue / active_members if active_members > 0 else 0
+        current_arpm = f_rev / active_members if active_members > 0 else 0
+        
+        # Calculate Trend Deltas
+        d_rev = calc_delta(f_rev, get_avg("Total Income"))
+        d_opex = calc_delta(f_opex, get_avg("Operating Expenses"))
+        d_non_opex = calc_delta(f_non_opex, get_avg("Non-Operating Expenses"))
+        d_op_inc = calc_delta(f_op_inc, get_avg("Operating Income"))
+        d_cash = calc_delta(f_cash, get_avg("Remaining Cash"))
 
-    # ARPM Baseline / Delta Logic
-    avg_rev = avg_row["Total Income"].values[0] if not avg_row.empty and "Total Income" in avg_row.columns else 0
-    avg_arpm = avg_rev / active_members if active_members > 0 else 0
-    
+    avg_rev_for_arpm = get_avg("Total Income")
+    avg_arpm = avg_rev_for_arpm / active_members if active_members > 0 else 0
     arpm_delta = current_arpm - avg_arpm if not is_ytd else None
     
-    def fmt_arpm_delta(d_val):
-        if d_val is None: return None
-        prefix = "+$" if d_val >= 0 else "-$"
-        return f"{prefix}{abs(d_val):,.2f} vs avg"
+    # Financial Display Row 1
+    f_col1, f_col2, f_col3, f_col4 = st.columns(4)
+    with f_col1: st.metric("Total Revenue", f"${f_rev:,.2f}", delta=fmt_delta(d_rev, True))
+    with f_col2: st.metric("Operating Expenses", f"${f_opex:,.2f}", delta=fmt_delta(d_opex, True), delta_color="inverse")
+    with f_col3: st.metric("Non-Op Expenses", f"${f_non_opex:,.2f}", delta=fmt_delta(d_non_opex, True), delta_color="inverse")
+    with f_col4: st.metric(op_label, f"${f_op_inc:,.2f}", delta=fmt_delta(d_op_inc, True))
 
-    with col1:
-        st.metric("Total Revenue", f"${current_revenue:,.2f}")
-    with col2:
-        st.metric(op_label, f"${current_op_income:,.2f}")
-    with col3:
-        st.metric("Net Cash Flow", f"${current_cash:,.2f}")
-    with col4:
-        st.metric(margin_label, avg_margin)
-    with col5:
-        st.metric("ARPM", f"${current_arpm:,.2f}", delta=fmt_arpm_delta(arpm_delta))
+    st.write("") # Layout gap
+    
+    # Financial Display Row 2
+    f_col5, f_col6, f_col7, f_col8 = st.columns(4)
+    with f_col5: st.metric("Net Cash Flow", f"${f_cash:,.2f}", delta=fmt_delta(d_cash, True))
+    with f_col6: st.metric(margin_label, avg_margin)
+    with f_col7: st.metric("ARPM", f"${current_arpm:,.2f}", delta=fmt_delta(arpm_delta, True))
+
 
 # --- SECTION 2: MONTHLY PERFORMANCE ---
 if is_ytd:
@@ -199,23 +225,6 @@ else:
     st.markdown("### Monthly Performance")
 
 with st.container(border=True):
-    def get_val(df_source, col_name, is_ytd_mode):
-        if is_ytd_mode:
-            return ytd_row[col_name].values[0] if not ytd_row.empty and col_name in ytd_row.columns else 0
-        else:
-            return df_source[col_name].iloc[-1] if not df_source.empty and col_name in df_source.columns else 0
-
-    def get_avg(col_name):
-        return avg_row[col_name].values[0] if not avg_row.empty and col_name in avg_row.columns else 0
-
-    def calc_delta(val, avg):
-        return val - avg if not is_ytd else None
-
-    def fmt_delta(d_val, is_currency=False):
-        if d_val is None: return None
-        prefix = "+$" if is_currency and d_val >= 0 else "-$" if is_currency else "+" if d_val >= 0 else ""
-        return f"{prefix}{abs(d_val):,.2f} vs avg" if is_currency else f"{prefix}{d_val:,.0f} vs avg"
-
     m_mem = get_val(view_df, "Total Memberships", is_ytd)
     m_can = get_val(view_df, "Total Cancels", is_ytd)
     m_eft_g = get_val(view_df, "Total EFT Gained", is_ytd)
